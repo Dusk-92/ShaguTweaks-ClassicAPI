@@ -29,6 +29,34 @@ local function AddData(db, name, class, level, elite)
   queue[name] = nil
 end
 
+local function RememberPlayer(name)
+  if not name or name == "" or name == _G.UNKNOWN then return end
+
+  ShaguTweaks_cache = ShaguTweaks_cache or {}
+  ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
+  units.players = ShaguTweaks_cache["players"]
+
+  units.players[name] = units.players[name] or {}
+  units.players[name].lastseen = date("%a %d-%b-%Y")
+end
+
+ShaguTweaks.RememberPlayer = RememberPlayer
+
+local passiveChatEvents = {
+  ["CHAT_MSG_CHANNEL"] = true,
+  ["CHAT_MSG_SAY"] = true,
+  ["CHAT_MSG_YELL"] = true,
+  ["CHAT_MSG_GUILD"] = true,
+  ["CHAT_MSG_OFFICER"] = true,
+  ["CHAT_MSG_PARTY"] = true,
+  ["CHAT_MSG_RAID"] = true,
+  ["CHAT_MSG_RAID_LEADER"] = true,
+  ["CHAT_MSG_RAID_WARNING"] = true,
+  ["CHAT_MSG_BATTLEGROUND"] = true,
+  ["CHAT_MSG_BATTLEGROUND_LEADER"] = true,
+  ["CHAT_MSG_WHISPER"] = true,
+}
+
 libunitscan:RegisterEvent("PLAYER_ENTERING_WORLD")
 libunitscan:RegisterEvent("FRIENDLIST_UPDATE")
 libunitscan:RegisterEvent("GUILD_ROSTER_UPDATE")
@@ -38,6 +66,10 @@ libunitscan:RegisterEvent("PLAYER_TARGET_CHANGED")
 libunitscan:RegisterEvent("WHO_LIST_UPDATE")
 libunitscan:RegisterEvent("CHAT_MSG_SYSTEM")
 libunitscan:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+for chatEvent in pairs(passiveChatEvents) do
+  libunitscan:RegisterEvent(chatEvent)
+end
+
 libunitscan:SetScript("OnEvent", function()
   if event == "PLAYER_ENTERING_WORLD" then
     -- load database
@@ -50,6 +82,11 @@ libunitscan:SetScript("OnEvent", function()
     local _, class = UnitClass("player")
     local level = UnitLevel("player")
     AddData("players", name, class, level)
+
+  elseif passiveChatEvents[event] then
+    -- Passive cache only: remember speakers already delivered by the client.
+    -- No /who, no TargetByName queue, no timer and no additional server query.
+    RememberPlayer(arg2)
 
   elseif event == "FRIENDLIST_UPDATE" then
     local name, class, level
