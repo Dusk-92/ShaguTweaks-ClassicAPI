@@ -4,6 +4,7 @@ local L = ShaguTweaks.L
 
 local units = { players = {}, mobs = {} }
 local queue = { }
+local PASSIVE_CACHE_TTL = 365 * 24 * 60 * 60
 
 local libunitscan = CreateFrame("Frame", "ShaguTweaksUnitScan", UIParent)
 
@@ -38,6 +39,20 @@ local function RememberPlayer(name)
 
   units.players[name] = units.players[name] or {}
   units.players[name].lastseen = date("%a %d-%b-%Y")
+  units.players[name].lastseen_ts = time()
+end
+
+local function PrunePassivePlayers()
+  local now = time()
+
+  for name, data in pairs(units.players) do
+    -- Keep every player whose class was learned. Only anonymous/passive chat
+    -- entries expire, and only when they carry our numeric last-seen timestamp.
+    if data and not data.class and data.lastseen_ts and
+      now - data.lastseen_ts > PASSIVE_CACHE_TTL then
+      units.players[name] = nil
+    end
+  end
 end
 
 ShaguTweaks.RememberPlayer = RememberPlayer
@@ -76,6 +91,9 @@ libunitscan:SetScript("OnEvent", function()
     ShaguTweaks_cache = ShaguTweaks_cache or {}
     ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
     units.players = ShaguTweaks_cache["players"]
+
+    -- One cheap cleanup pass at login. Known classes are kept forever.
+    PrunePassivePlayers()
 
     -- update own character details
     local name = UnitName("player")
