@@ -4,7 +4,7 @@ local L = ShaguTweaks.L
 
 local units = { players = {}, mobs = {} }
 local queue = { }
-local PASSIVE_CACHE_TTL = 365 * 24 * 60 * 60
+local PASSIVE_CACHE_TTL = 90 * 24 * 60 * 60
 
 local libunitscan = CreateFrame("Frame", "ShaguTweaksUnitScan", UIParent)
 
