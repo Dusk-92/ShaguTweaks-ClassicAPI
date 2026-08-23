@@ -28,20 +28,54 @@ local function ChatTweaksOwnsSocialColors()
   return chat and chat.enabled or false
 end
 
+local function GetPlayerDB()
+  ShaguTweaks_cache = ShaguTweaks_cache or {}
+  ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
+  return ShaguTweaks_cache["players"]
+end
+
+local function CacheVisibleOnlineFriends(playerdb)
+  if GetNumFriends() == 0 then return end
+
+  local off = FauxScrollFrame_GetOffset(FriendsFrameFriendsScrollFrame)
+  for i=1, FRIENDS_TO_DISPLAY do
+    local name, level, class, _, connected = GetFriendInfo(off + i)
+    if not name or name == _G.UNKNOWN then break end
+
+    if connected and class and class ~= _G.UNKNOWN then
+      local ccolor = RAID_CLASS_COLORS[L["class"][class]]
+      local lcolor = GetDifficultyColor(tonumber(level))
+
+      if ccolor and lcolor then
+        playerdb[name] = playerdb[name] or {}
+        playerdb[name].lastseen = date("%a %d-%b-%Y")
+        playerdb[name].cname = rgbhex(ccolor) .. name .. "|r"
+        playerdb[name].clevel = rgbhex(lcolor) .. level .. "|r"
+        playerdb[name].cclass = ccolor
+      end
+    end
+  end
+end
+
 module.enable = function(self)
-  -- Chat Tweaks currently contains the same social-color feature set. Avoid
-  -- duplicate AddMessage/Guild/Friends/Who hooks and a duplicate named frame,
-  -- while keeping Social Colors independent whenever Chat Tweaks is disabled.
-  if ChatTweaksOwnsSocialColors() then return end
+  local playerdb = GetPlayerDB()
+
+  -- Chat Tweaks contains the same social-color rendering hooks in this fork.
+  -- When it owns the UI, keep Social Colors limited to a tiny local cache hook
+  -- so friends retain their known class color while offline. This does not
+  -- issue /who requests, add timers, or perform any extra server query.
+  if ChatTweaksOwnsSocialColors() then
+    hooksecurefunc("FriendsList_Update", function()
+      CacheVisibleOnlineFriends(playerdb)
+    end)
+    return
+  end
 
 do -- add class colors to chat
     for i=1,NUM_CHAT_WINDOWS do
       if _G["ChatFrame"..i] and not _G["ChatFrame"..i].HookAddMessageColor and not Prat then
         _G["ChatFrame"..i].HookAddMessageColor = _G["ChatFrame"..i].AddMessage
         _G["ChatFrame"..i].AddMessage = function(frame, text, a1, a2, a3, a4, a5)
-          -- Chat Tweaks already owns chat class coloring in this fork. Keep
-          -- Social Colors responsible for Guild/Friends/Who, but avoid doing
-          -- the same player-link parsing twice when both modules are enabled.
           if frame.ShaguTweaksChatTweaksHooked then
             _G["ChatFrame"..i].HookAddMessageColor(frame, text, a1, a2, a3, a4, a5)
             return
@@ -65,15 +99,10 @@ do -- add class colors to chat
     end
   end
 
-  ShaguTweaks_cache = ShaguTweaks_cache or {}
-  ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
-
-  local playerdb = ShaguTweaks_cache["players"]
   local socialmod = CreateFrame("Frame", "ShaguTweaksSocialMod", UIParent)
   socialmod:RegisterEvent("CHAT_MSG_SYSTEM")
   socialmod:SetScript("OnEvent", function()
-    local name = cmatch(arg1, _G.ERR_FRIEND_ONLINE_SS)
-    name = cmatch(arg1, _G.ERR_FRIEND_OFFLINE_S)
+    local name = cmatch(arg1, _G.ERR_FRIEND_ONLINE_SS) or cmatch(arg1, _G.ERR_FRIEND_OFFLINE_S)
     if name and playerdb[name] and playerdb[name].cname then
       playerdb[name].lastseen = date("%a %d-%b-%Y")
     end
@@ -123,9 +152,9 @@ do -- add class colors to chat
 
           if rankindex and rankindex == playerrankindex then
             if online then
-                _G["GuildFrameGuildStatusButton"..i.."Rank"]:SetTextColor(.5, 1, 1, 1)
+              _G["GuildFrameGuildStatusButton"..i.."Rank"]:SetTextColor(.5, 1, 1, 1)
             else
-                _G["GuildFrameGuildStatusButton"..i.."Rank"]:SetTextColor(.5, 1, 1, .5)
+              _G["GuildFrameGuildStatusButton"..i.."Rank"]:SetTextColor(.5, 1, 1, .5)
             end
           end
         end
@@ -138,7 +167,7 @@ do -- add class colors to chat
     hooksecurefunc("FriendsList_Update", function()
       if GetNumFriends() == 0 then return end
 
-      local playerzone  = GetRealZoneText()
+      local playerzone = GetRealZoneText()
       local off = FauxScrollFrame_GetOffset(FriendsFrameFriendsScrollFrame)
 
       for i=1, FRIENDS_TO_DISPLAY do
@@ -158,12 +187,11 @@ do -- add class colors to chat
           local cname = rgbhex(ccolor) .. name .. "|r"
           local clevel = rgbhex(lcolor) .. level .. "|r"
 
-          if playerdb[name] then
-            playerdb[name].lastseen = date("%a %d-%b-%Y")
-            playerdb[name].cname = cname
-            playerdb[name].clevel = clevel
-            playerdb[name].cclass = ccolor
-          end
+          playerdb[name] = playerdb[name] or {}
+          playerdb[name].lastseen = date("%a %d-%b-%Y")
+          playerdb[name].cname = cname
+          playerdb[name].clevel = clevel
+          playerdb[name].cclass = ccolor
 
           if friendName then
             friendName:SetText(cname)
@@ -196,8 +224,8 @@ do -- add class colors to chat
       local num, max = GetNumWhoResults()
       local off = FauxScrollFrame_GetOffset(WhoListScrollFrame)
 
-      local playerzone  = GetRealZoneText()
-      local playerrace  = UnitRace("player")
+      local playerzone = GetRealZoneText()
+      local playerrace = UnitRace("player")
       local playerguild = GetGuildInfo("player")
 
       for i=1, WHOS_TO_DISPLAY do
