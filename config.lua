@@ -101,7 +101,7 @@ settings.okay:SetScript("OnClick", function()
   settings:Hide()
 end)
 
-settings.defaults = CreateFrame("Button", "AdvancedSettingsGUICancel", settings, "GameMenuButtonTemplate")
+settings.defaults = CreateFrame("Button", "AdvancedSettingsGUIDefaults", settings, "GameMenuButtonTemplate")
 settings.defaults:SetWidth(90)
 settings.defaults:SetPoint("BOTTOMLEFT", settings, "BOTTOMLEFT", 17, 17)
 settings.defaults:SetText(DEFAULTS)
