@@ -1,5 +1,6 @@
 name: Temporary Vendor Values DB Generator
 
+# Temporary one-shot generator for the Turtle WoW static vendor database.
 on:
   push:
     branches: [classicapi-enhanced]
