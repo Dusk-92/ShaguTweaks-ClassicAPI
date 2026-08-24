@@ -17,18 +17,25 @@ local module = ShaguTweaks:register({
 local function CooldownOnUpdate()
   -- hide frames without parent
   local parent = this:GetParent()
-  if not parent then this:Hide() end
+  if not parent then
+    this:Hide()
+    return
+  end
 
-  if not this.tick then this.tick = GetTime() + .1 end
-  if this.tick > GetTime() then return end
-  this.tick = GetTime() + .1
+  -- Text only needs tenth-of-a-second precision. Accumulate the frame elapsed
+  -- time instead of calling GetTime() several times on every rendered frame.
+  this.elapsed = (this.elapsed or 0) + arg1
+  if this.elapsed < .1 then return end
+  this.elapsed = 0
+
+  local now = GetTime()
 
   -- fix own alpha value (should be inherited, but somehow isn't always)
   this:SetAlpha(parent:GetAlpha())
 
-  if this.start < GetTime() then
+  if this.start < now then
     -- calculating remaining time as it should be
-    local remaining = this.duration - (GetTime() - this.start)
+    local remaining = this.duration - (now - this.start)
     if remaining > 0 then
       this.text:SetText(TimeConvert(remaining))
     else
@@ -37,13 +44,13 @@ local function CooldownOnUpdate()
   else
     -- I have absolutely no idea, but it works:
     -- https://github.com/Stanzilla/WoWUIBugs/issues/47
-    local time = time()
-    local startupTime = time - GetTime()
+    local walltime = time()
+    local startupTime = walltime - now
     -- just a simplification of: ((2^32) - (start * 1000)) / 1000
     local cdTime = (2 ^ 32) / 1000 - this.start
     local cdStartTime = startupTime - cdTime
     local cdEndTime = cdStartTime + this.duration
-    local remaining = cdEndTime - time
+    local remaining = cdEndTime - walltime
 
     if remaining >= 0 then
       this.text:SetText(TimeConvert(remaining))
@@ -60,13 +67,13 @@ local function CreateCoolDown(cooldown, start, duration)
   -- skip already set debuff timers
   if cooldown.readable then return end
 
-  local parentname = parent and parent.GetName and parent:GetName()
-  parentname = parentname or "UnknownCooldownFrame"
-
-  cooldown.cooldowntext = CreateFrame("Frame", parentname .. "CooldownText", cooldown)
+  -- These helpers are owned directly by their cooldown and never need global
+  -- names. Anonymous objects avoid collisions for cooldowns with anonymous
+  -- parents while preserving the exact same visual hierarchy.
+  cooldown.cooldowntext = CreateFrame("Frame", nil, cooldown)
   cooldown.cooldowntext:SetAllPoints(cooldown)
   cooldown.cooldowntext:SetFrameLevel(parent:GetFrameLevel() + 1)
-  cooldown.cooldowntext.text = cooldown.cooldowntext:CreateFontString(parentname .. "CooldownTextFont", "OVERLAY")
+  cooldown.cooldowntext.text = cooldown.cooldowntext:CreateFontString(nil, "OVERLAY")
 
   -- detect dynamic font size
   local size = parent:GetHeight() or 0
@@ -102,6 +109,7 @@ local function SetCooldown(this, start, duration, enable)
 
   if this.cooldowntext then
     if start > 0 and duration > 0 and (not enable or enable > 0) then
+      this.cooldowntext.elapsed = 0
       this.cooldowntext:Show()
     else
       this.cooldowntext:Hide()
