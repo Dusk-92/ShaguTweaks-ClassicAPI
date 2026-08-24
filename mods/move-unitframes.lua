@@ -1,6 +1,5 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
-local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["Movable Unit Frames"],
@@ -62,23 +61,7 @@ module.enable = function(self)
     line:SetPoint('BOTTOMRIGHT', unlocker.grid, 'TOPRIGHT', 0, -(i*hStep + size/2))
   end
 
-  local function IsControlDown()
-    -- ClassicAPI updates its left/right modifier bitmap before firing
-    -- MODIFIER_STATE_CHANGED. Vanilla's merged key state can still be stale
-    -- inside that callback, exactly like the Shift case fixed in Equip Compare.
-    if type(_G.IsLeftControlKeyDown) == "function" and
-      type(_G.IsRightControlKeyDown) == "function" then
-      return (_G.IsLeftControlKeyDown() or _G.IsRightControlKeyDown()) and true or false
-    end
-
-    return IsControlKeyDown() and true or false
-  end
-
-  local function UpdateMovableState()
-    local shiftDown = API and API.IsShiftKeyDown and API.IsShiftKeyDown()
-      or (IsShiftKeyDown() and true or false)
-    local shouldMove = shiftDown and IsControlDown()
-
+  local function SetMovableState(shouldMove)
     if shouldMove and not unlocker.movable then
       for _, frame in pairs(movables) do
         _G[frame]:SetUserPlaced(true)
@@ -103,9 +86,47 @@ module.enable = function(self)
     end
   end
 
-  -- ClassicAPI provides MODIFIER_STATE_CHANGED. This replaces the old
-  -- every-frame Shift/Ctrl poll with work only when a modifier actually changes.
-  unlocker:RegisterEvent("MODIFIER_STATE_CHANGED")
-  unlocker:RegisterEvent("PLAYER_ENTERING_WORLD")
-  unlocker:SetScript("OnEvent", UpdateMovableState)
+  local hasModifierEvent = _G.C_EventUtils
+    and type(_G.C_EventUtils.IsEventValid) == "function"
+    and _G.C_EventUtils.IsEventValid("MODIFIER_STATE_CHANGED")
+
+  if hasModifierEvent then
+    -- Do not re-query modifier functions from inside MODIFIER_STATE_CHANGED.
+    -- The event already tells us exactly which physical key transitioned and
+    -- whether it is now down (arg2=1) or up (arg2=0). Keeping our own state
+    -- avoids any merged/stale Win32 key-state ambiguity in the callback.
+    local state = {
+      LSHIFT = type(_G.IsLeftShiftKeyDown) == "function" and _G.IsLeftShiftKeyDown() and true or false,
+      RSHIFT = type(_G.IsRightShiftKeyDown) == "function" and _G.IsRightShiftKeyDown() and true or false,
+      LCTRL = type(_G.IsLeftControlKeyDown) == "function" and _G.IsLeftControlKeyDown() and true or false,
+      RCTRL = type(_G.IsRightControlKeyDown) == "function" and _G.IsRightControlKeyDown() and true or false,
+    }
+
+    local function RefreshFromState()
+      SetMovableState((state.LSHIFT or state.RSHIFT) and (state.LCTRL or state.RCTRL))
+    end
+
+    unlocker:RegisterEvent("MODIFIER_STATE_CHANGED")
+    unlocker:RegisterEvent("PLAYER_ENTERING_WORLD")
+    unlocker:SetScript("OnEvent", function()
+      if event == "MODIFIER_STATE_CHANGED" then
+        if state[arg1] ~= nil then
+          state[arg1] = arg2 == 1
+        end
+      elseif event == "PLAYER_ENTERING_WORLD" then
+        state.LSHIFT = type(_G.IsLeftShiftKeyDown) == "function" and _G.IsLeftShiftKeyDown() and true or false
+        state.RSHIFT = type(_G.IsRightShiftKeyDown) == "function" and _G.IsRightShiftKeyDown() and true or false
+        state.LCTRL = type(_G.IsLeftControlKeyDown) == "function" and _G.IsLeftControlKeyDown() and true or false
+        state.RCTRL = type(_G.IsRightControlKeyDown) == "function" and _G.IsRightControlKeyDown() and true or false
+      end
+
+      RefreshFromState()
+    end)
+  else
+    -- Compatibility fallback for clients without ClassicAPI's modifier event.
+    -- This is intentionally tiny: two boolean key checks per rendered frame.
+    unlocker:SetScript("OnUpdate", function()
+      SetMovableState(IsShiftKeyDown() and IsControlKeyDown())
+    end)
+  end
 end
