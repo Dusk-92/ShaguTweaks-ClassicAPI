@@ -1,37 +1,112 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
-local L = ShaguTweaks.L
 local round = ShaguTweaks.round
 local rgbhex = ShaguTweaks.rgbhex
 local Abbreviate = ShaguTweaks.Abbreviate
+local API = ShaguTweaks.API
 
-local units = { "mouseover", "player", "pet", "target", "party", "partypet", "raid", "raidpet" }
 local current_unit = "none"
+local current_guid = nil
+local statusbar = nil
+
+local direct_units = { "mouseover", "target", "focus", "player", "pet" }
+
+local function UnitMatchesGUID(unit, guid)
+  if not guid or not UnitExists(unit) then return false end
+
+  if API and API.UnitGUID then
+    return API.UnitGUID(unit) == guid
+  elseif type(UnitGUID) == "function" then
+    return UnitGUID(unit) == guid
+  end
+
+  return false
+end
+
+local function FindUnitByGUID(guid)
+  if not guid then return end
+
+  -- The common case is mouseover/target, so check cheap tokens first.
+  for _, unit in pairs(direct_units) do
+    if UnitMatchesGUID(unit, guid) then
+      return unit
+    end
+  end
+
+  for i=1,4 do
+    if UnitMatchesGUID("party" .. i, guid) then return "party" .. i end
+    if UnitMatchesGUID("partypet" .. i, guid) then return "partypet" .. i end
+  end
+
+  for i=1,40 do
+    if UnitMatchesGUID("raid" .. i, guid) then return "raid" .. i end
+    if UnitMatchesGUID("raidpet" .. i, guid) then return "raidpet" .. i end
+  end
+end
+
+local function FindUnitByName()
+  local tooltipName = GameTooltipTextLeft1:GetText()
+  if not tooltipName then return end
+
+  for _, unit in pairs(direct_units) do
+    if UnitExists(unit) and
+      (UnitName(unit) == tooltipName or UnitPVPName(unit) == tooltipName) then
+      return unit
+    end
+  end
+
+  for i=1,4 do
+    local party = "party" .. i
+    local pet = "partypet" .. i
+    if UnitExists(party) and
+      (UnitName(party) == tooltipName or UnitPVPName(party) == tooltipName) then
+      return party
+    end
+    if UnitExists(pet) and
+      (UnitName(pet) == tooltipName or UnitPVPName(pet) == tooltipName) then
+      return pet
+    end
+  end
+
+  for i=1,40 do
+    local raid = "raid" .. i
+    local pet = "raidpet" .. i
+    if UnitExists(raid) and
+      (UnitName(raid) == tooltipName or UnitPVPName(raid) == tooltipName) then
+      return raid
+    end
+    if UnitExists(pet) and
+      (UnitName(pet) == tooltipName or UnitPVPName(pet) == tooltipName) then
+      return pet
+    end
+  end
+end
 
 local function GetUnit()
-  current_unit = "none"
-  for i, unit in pairs(units) do
-    if unit == "party" or unit == "partypet" then
-      for i=1,4 do
-        if UnitExists(unit .. i) and ( UnitName(unit .. i) == GameTooltipTextLeft1:GetText() or UnitPVPName(unit .. i) == GameTooltipTextLeft1:GetText() ) then
-          current_unit = unit .. i
-          return current_unit
-        end
+  -- ClassicAPI stores the actual unit GUID on GameTooltip. Prefer it over the
+  -- old name-comparison heuristic, which can misidentify units with matching
+  -- display names or PvP titles.
+  if type(GameTooltip.GetUnitGUID) == "function" then
+    local _, guid = GameTooltip:GetUnitGUID()
+    if guid then
+      if current_guid == guid and current_unit ~= "none" and
+        UnitMatchesGUID(current_unit, guid) then
+        return current_unit
       end
-    elseif unit == "raid" or unit == "raidpet" then
-      for i=1,40 do
-        if UnitExists(unit .. i) and ( UnitName(unit .. i) == GameTooltipTextLeft1:GetText() or UnitPVPName(unit .. i) == GameTooltipTextLeft1:GetText() ) then
-          current_unit = unit .. i
-          return current_unit
-        end
-      end
-    else
-      if UnitExists(unit) and ( UnitName(unit) == GameTooltipTextLeft1:GetText() or UnitPVPName(unit) == GameTooltipTextLeft1:GetText() ) then
+
+      local unit = FindUnitByGUID(guid)
+      if unit then
+        current_guid = guid
         current_unit = unit
         return current_unit
       end
     end
   end
+
+  -- Compatibility fallback for clients without the ClassicAPI tooltip method,
+  -- or for a unit that cannot currently be mapped back to a known unit token.
+  current_guid = nil
+  current_unit = FindUnitByName() or "none"
   return current_unit
 end
 
@@ -55,25 +130,38 @@ local function UpdateTooltip()
   local _, class = UnitClass(unit)
   local guild = GetGuildInfo(unit)
   local reaction = UnitReaction(unit, "player")
-  local pvptitle = gsub(pvpname or name, " " .. name, "", 1)
+  local pvptitle = name and gsub(pvpname or name, " " .. name, "", 1) or nil
+
+  -- Keep the health estimator bound to the unit actually represented by the
+  -- tooltip, not merely whichever unit happened to be mouseover last.
+  if statusbar then
+    statusbar.name = name
+    statusbar.level = UnitLevel(unit)
+    statusbar.lastHP = nil
+    statusbar.lastHPMax = nil
+    statusbar.lastName = nil
+    statusbar.lastLevel = nil
+  end
 
   if name then
     if UnitIsPlayer(unit) and class then
       local color = RAID_CLASS_COLORS[class]
-      GameTooltipStatusBar:SetStatusBarColor_orig(color.r, color.g, color.b)
-      GameTooltipStatusBar.bg:SetVertexColor(color.r * 0.15, color.g * 0.15, color.b * 0.15, 0.8)
-      if color and color.r then
+      if color then
+        GameTooltipStatusBar:SetStatusBarColor_orig(color.r, color.g, color.b)
+        GameTooltipStatusBar.bg:SetVertexColor(color.r * 0.15, color.g * 0.15, color.b * 0.15, 0.8)
         GameTooltipTextLeft1:SetText(rgbhex(color.r, color.g, color.b, color.a) .. name)
       else
         GameTooltipTextLeft1:SetText("|cff999999" .. name)
       end
     elseif reaction then
       local color = UnitReactionColor[reaction]
-      GameTooltipStatusBar:SetStatusBarColor_orig(color.r, color.g, color.b)
-      GameTooltipStatusBar.bg:SetVertexColor(color.r * 0.15, color.g * 0.15, color.b * 0.15, 0.8)
+      if color then
+        GameTooltipStatusBar:SetStatusBarColor_orig(color.r, color.g, color.b)
+        GameTooltipStatusBar.bg:SetVertexColor(color.r * 0.15, color.g * 0.15, color.b * 0.15, 0.8)
+      end
     end
 
-    if pvptitle ~= name then
+    if pvptitle and pvptitle ~= name then
       GameTooltip:AppendText(" |cff666666[" .. pvptitle .. "]|r")
     end
   end
@@ -94,20 +182,25 @@ local function UpdateTooltip()
   end
 
   -- Current target, colored by class or reaction
-  -- Check tooltip lines to avoid duplicating the target line
   local alreadyAdded = false
-  for i = 2, GameTooltip:NumLines() do
-    local left = _G["GameTooltipTextLeft" .. i]
-    if left and left:GetText() == target then
-      alreadyAdded = true
-      break
+  if target then
+    for i = 2, GameTooltip:NumLines() do
+      local left = _G["GameTooltipTextLeft" .. i]
+      if left and left:GetText() == target then
+        alreadyAdded = true
+        break
+      end
     end
   end
 
   if target and not alreadyAdded then
     if UnitIsPlayer(unit .. "target") and targetClass then
       local color = RAID_CLASS_COLORS[targetClass]
-      GameTooltip:AddLine(target, color.r, color.g, color.b)
+      if color then
+        GameTooltip:AddLine(target, color.r, color.g, color.b)
+      else
+        GameTooltip:AddLine(target, .5, .5, .5)
+      end
     elseif targetReaction then
       local color = UnitReactionColor[targetReaction]
       if color then
@@ -166,19 +259,43 @@ module.enable = function(self)
   local details = CreateFrame("Frame", nil, GameTooltip)
   details:SetScript("OnShow", UpdateTooltip)
 
-  -- refresh current name and level
-  local statusbar = CreateFrame('Frame', nil, GameTooltipStatusBar)
+  -- refresh the currently displayed unit identity
+  statusbar = CreateFrame("Frame", nil, GameTooltipStatusBar)
   statusbar:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
   statusbar:SetScript("OnEvent", function()
-    this.name = UnitName("mouseover")
-    this.level = UnitLevel("mouseover")
+    local unit = GetUnit()
+    if unit ~= "none" then
+      this.name = UnitName(unit)
+      this.level = UnitLevel(unit)
+    else
+      this.name = UnitName("mouseover")
+      this.level = UnitLevel("mouseover")
+    end
+
+    this.lastHP = nil
+    this.lastHPMax = nil
+    this.lastName = nil
+    this.lastLevel = nil
     UpdateTooltip()
   end)
 
-  -- update health text
+  -- Keep the lightweight OnUpdate because the vanilla tooltip statusbar can
+  -- change without a dedicated Lua event. Skip the expensive estimator/string
+  -- work entirely while its inputs are unchanged.
   statusbar:SetScript("OnUpdate", function()
     local hp = GameTooltipStatusBar:GetValue()
     local _, hpmax = GameTooltipStatusBar:GetMinMaxValues()
+
+    if hp == this.lastHP and hpmax == this.lastHPMax and
+      this.name == this.lastName and this.level == this.lastLevel then
+      return
+    end
+
+    this.lastHP = hp
+    this.lastHPMax = hpmax
+    this.lastName = this.name
+    this.lastLevel = this.level
+
     local rhp, rhpmax, estimated
 
     if hpmax > 100 or (round(hpmax/100*hp) ~= hp) then
@@ -187,7 +304,7 @@ module.enable = function(self)
       rhp, rhpmax, estimated = ShaguTweaks.libhealth:GetUnitHealthByName(this.name, this.level, tonumber(hp), tonumber(hpmax))
     end
 
-    if ( estimated or hpmax > 100 or round(hpmax/100*hp) ~= hp ) then
+    if estimated or hpmax > 100 or round(hpmax/100*hp) ~= hp then
       GameTooltipStatusBar.backdrop.health:SetText(string.format("%s / %s", Abbreviate(rhp, true), Abbreviate(rhpmax, true)))
     elseif hpmax > 0 then
       GameTooltipStatusBar.backdrop.health:SetText(string.format("%s%%", ceil(hp/hpmax*100)))
@@ -195,5 +312,4 @@ module.enable = function(self)
       GameTooltipStatusBar.backdrop.health:SetText("")
     end
   end)
-
 end
