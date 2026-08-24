@@ -146,24 +146,58 @@ end
 
 -- Returns the live vendor sell price in copper when the client has the item
 -- cached. ClassicAPI warms uncached item data itself and returns nil until the
--- cache fill completes, allowing callers to keep an immediate legacy fallback.
+-- cache fill completes.
 API.GetItemSellPriceByID = function(itemID)
   if API.itemprice and itemID then
     return _G.C_Item.GetItemSellPriceByID(itemID)
   end
 end
 
--- Vendor Values keeps its original static database as an immediate fallback.
--- Once all addon files are loaded, wrap that database so ClassicAPI's live
--- price wins whenever the client has a positive sell price. Nil/zero is treated
--- as unavailable here so the historical ShaguTweaks database can still provide
--- an immediate value before ClassicAPI has learned the merchant price.
+local function GetVendorPriceCache()
+  ShaguTweaks_cache = ShaguTweaks_cache or {}
+  ShaguTweaks_cache["vendor_prices"] = ShaguTweaks_cache["vendor_prices"] or {}
+  return ShaguTweaks_cache["vendor_prices"]
+end
+
+-- Persist only prices that add something to the original static database:
+-- new Turtle/custom items or prices changed by Turtle WoW. This keeps the
+-- per-character SavedVariables cache very small.
+API.RememberVendorPrice = function(itemID)
+  if not API.itemprice or type(itemID) ~= "number" then return end
+
+  local price = API.GetItemSellPriceByID(itemID)
+  if not price or price <= 0 then return end
+
+  local learned = GetVendorPriceCache()
+  local legacy = ShaguTweaks.SellValueLegacyDB or ShaguTweaks.SellValueDB
+  local legacyPrice = legacy and legacy[itemID]
+
+  if not legacyPrice or legacyPrice ~= price then
+    learned[itemID] = price
+  else
+    -- Drop a now-redundant learned value if the bundled database caught up.
+    learned[itemID] = nil
+  end
+
+  -- If the ClassicAPI proxy is already active, make this confirmed live value
+  -- immediately available without another lookup during the current session.
+  if ShaguTweaks.SellValueLegacyDB and ShaguTweaks.SellValueDB then
+    rawset(ShaguTweaks.SellValueDB, itemID, price)
+  end
+
+  return price
+end
+
+-- Vendor Values keeps its original static database as the final fallback.
+-- Resolution order is: current ClassicAPI value -> learned persistent value ->
+-- bundled ShaguTweaks database.
 API.PrepareVendorValues = function()
   if not API.itemprice or not ShaguTweaks.SellValueDB or ShaguTweaks.SellValueLegacyDB then
     return
   end
 
   local legacy = ShaguTweaks.SellValueDB
+  local learned = GetVendorPriceCache()
   local live = {}
 
   setmetatable(live, {
@@ -174,10 +208,19 @@ API.PrepareVendorValues = function()
 
       local price = API.GetItemSellPriceByID(itemID)
       if price and price > 0 then
-        -- Cache only confirmed positive live prices. Never cache nil/zero: a
-        -- later merchant/cache update may make the real price available.
+        if not legacy[itemID] or legacy[itemID] ~= price then
+          learned[itemID] = price
+        else
+          learned[itemID] = nil
+        end
+
         rawset(tab, itemID, price)
         return price
+      end
+
+      local remembered = learned[itemID]
+      if remembered and remembered > 0 then
+        return remembered
       end
 
       return legacy[itemID]
@@ -186,6 +229,32 @@ API.PrepareVendorValues = function()
 
   ShaguTweaks.SellValueLegacyDB = legacy
   ShaguTweaks.SellValueDB = live
+
+  -- Vendor Values intentionally suppresses its own tooltip price while a
+  -- merchant is open because the default UI already shows it there. Learn the
+  -- ClassicAPI price from bag/merchant tooltips anyway so new Turtle items are
+  -- available immediately after closing the merchant and after /reload.
+  if not API.vendorprice_tooltip_hooks then
+    API.vendorprice_tooltip_hooks = true
+
+    local HookSetBagItem = GameTooltip.SetBagItem
+    function GameTooltip.SetBagItem(self, container, slot)
+      if MerchantFrame and MerchantFrame:IsShown() then
+        local link = GetContainerItemLink(container, slot)
+        local itemID = link and ShaguTweaks.GetItemIDFromLink(link)
+        if itemID then API.RememberVendorPrice(itemID) end
+      end
+      return HookSetBagItem(self, container, slot)
+    end
+
+    local HookSetMerchantItem = GameTooltip.SetMerchantItem
+    function GameTooltip.SetMerchantItem(self, merchantIndex)
+      local link = GetMerchantItemLink(merchantIndex)
+      local itemID = link and ShaguTweaks.GetItemIDFromLink(link)
+      if itemID then API.RememberVendorPrice(itemID) end
+      return HookSetMerchantItem(self, merchantIndex)
+    end
+  end
 end
 
 API.GetNumJunkItems = function()
