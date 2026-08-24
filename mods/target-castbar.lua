@@ -1,6 +1,5 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
-local GetExpansion = ShaguTweaks.GetExpansion
 local API = ShaguTweaks.API
 local LegacyCastingInfo = ShaguTweaks.UnitCastingInfo
 local LegacyChannelInfo = ShaguTweaks.UnitChannelInfo
@@ -59,7 +58,7 @@ castbar.backdrop:SetBackdrop({
 
 castbar.text = castbar:CreateFontString(nil, "HIGH", "GameFontWhite")
 castbar.text:SetPoint("CENTER", castbar, "CENTER", 0, 0)
-local font, size, opts = castbar.text:GetFont()
+local font, size = castbar.text:GetFont()
 castbar.text:SetFont(font, size - 2, "THINOUTLINE")
 
 local function QueryLegacy(query)
@@ -95,7 +94,7 @@ local function QueryCast(unit)
 
   -- SuperWoW remains a second source for GUID-keyed casts when available.
   if ShaguTweaks.superwow_active and not UnitIsUnit(unit, "player") then
-    local _, guid = UnitExists(unit)
+    local guid = API.UnitGUID(unit)
     if guid then
       local a, b, c, d, e, f, g, h = QueryLegacy(guid)
       if a then return a, b, c, d, e, f, g, h end
@@ -105,70 +104,163 @@ local function QueryCast(unit)
   return QueryLegacy(unit)
 end
 
-module.enable = function(self)
-  local oldUpdate = TargetFrame:GetScript("OnUpdate")
-  TargetFrame:SetScript("OnUpdate", function(arg)
-    if oldUpdate then oldUpdate(arg) end
+local function UpdatePosition()
+  castbar:ClearAllPoints()
+  castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -4)
 
-    local unit = this.unit or "target"
-    local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, isChannel = QueryCast(unit)
+  local targetOfTarget = TargetofTargetFrame and TargetofTargetFrame:IsShown()
+  local debuff11 = TargetFrameDebuff11 and TargetFrameDebuff11:IsShown()
+  local debuff7 = TargetFrameDebuff7 and TargetFrameDebuff7:IsShown()
+  local buff1 = TargetFrameBuff1 and TargetFrameBuff1:IsShown()
 
-    if cast and startTime and endTime and endTime > startTime then
-      local duration = endTime - startTime
-      local max = duration / 1000
-      local cur = GetTime() - startTime / 1000
-
-      if isChannel then
-        cur = max + startTime/1000 - GetTime()
-      end
-
-      cur = cur > max and max or cur
-      cur = cur < 0 and 0 or cur
-
-      castbar:Show()
-      castbar:SetMinMaxValues(0, max)
-      castbar:SetValue(cur)
-
-      local percent = cur / max
-      local x = castbar:GetWidth()*percent
-      castbar.spark:SetPoint("CENTER", castbar, "LEFT", x, 0)
-
-      castbar.text:SetText(cast)
-
-      if texture then
-        castbar.texture.icon:SetTexture(texture)
-        castbar.texture.icon:Show()
-      else
-        castbar.texture.icon:Hide()
-      end
-
+  if targetOfTarget then
+    castbar:ClearAllPoints()
+    castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -24)
+    if debuff11 then
       castbar:ClearAllPoints()
-      castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -4)
-
-      local targetOfTarget = TargetofTargetFrame and TargetofTargetFrame:IsShown()
-      local debuff11 = TargetFrameDebuff11 and TargetFrameDebuff11:IsShown()
-      local debuff7 = TargetFrameDebuff7 and TargetFrameDebuff7:IsShown()
-      local buff1 = TargetFrameBuff1 and TargetFrameBuff1:IsShown()
-
-      if targetOfTarget then
+      castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -45)
+      if buff1 then
         castbar:ClearAllPoints()
-        castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -24)
-        if debuff11 then
-          castbar:ClearAllPoints()
-          castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -45)
-          if buff1 then
-              castbar:ClearAllPoints()
-              castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -65)
-          end
-        end
-      else
-        if debuff7 then
-          castbar:ClearAllPoints()
-          castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -24)
-        end
+        castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -65)
       end
-    else
-      castbar:Hide()
+    end
+  elseif debuff7 then
+    castbar:ClearAllPoints()
+    castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -24)
+  end
+end
+
+local function HideCast()
+  castbar.startTime = nil
+  castbar.endTime = nil
+  castbar.isChannel = nil
+  castbar:Hide()
+end
+
+local function UpdateProgress()
+  local startTime = castbar.startTime
+  local endTime = castbar.endTime
+  if not startTime or not endTime or endTime <= startTime then
+    HideCast()
+    return
+  end
+
+  local now = GetTime()
+  local max = endTime - startTime
+  if now >= endTime then
+    HideCast()
+    return
+  end
+
+  local cur
+  if castbar.isChannel then
+    cur = endTime - now
+  else
+    cur = now - startTime
+  end
+
+  cur = cur > max and max or cur
+  cur = cur < 0 and 0 or cur
+
+  castbar:SetValue(cur)
+
+  local percent = max > 0 and cur / max or 0
+  local x = castbar:GetWidth() * percent
+  castbar.spark:ClearAllPoints()
+  castbar.spark:SetPoint("CENTER", castbar, "LEFT", x, 0)
+
+  -- The target frame can move its buff/debuff rows while a cast is active.
+  -- Repositioning the visible bar is cheap and keeps it attached correctly.
+  UpdatePosition()
+end
+
+local function RefreshCast()
+  if not UnitExists("target") then
+    HideCast()
+    return
+  end
+
+  local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, isChannel = QueryCast("target")
+  if not cast or not startTime or not endTime or endTime <= startTime then
+    HideCast()
+    return
+  end
+
+  castbar.startTime = startTime / 1000
+  castbar.endTime = endTime / 1000
+  castbar.isChannel = isChannel
+
+  local max = castbar.endTime - castbar.startTime
+  castbar:SetMinMaxValues(0, max)
+  castbar.text:SetText(cast)
+
+  if texture then
+    castbar.texture.icon:SetTexture(texture)
+    castbar.texture.icon:Show()
+  else
+    castbar.texture.icon:Hide()
+  end
+
+  UpdatePosition()
+  castbar:Show()
+  UpdateProgress()
+end
+
+module.enable = function(self)
+  -- OnUpdate is now animation-only and runs only while the castbar is visible.
+  -- Cast discovery is driven by ClassicAPI's UNIT_SPELLCAST_* events instead
+  -- of querying the target's cast state on every rendered frame.
+  castbar:SetScript("OnUpdate", UpdateProgress)
+
+  local listener = CreateFrame("Frame")
+  listener:RegisterEvent("PLAYER_TARGET_CHANGED")
+
+  local castEvents = {
+    "UNIT_SPELLCAST_START",
+    "UNIT_SPELLCAST_STOP",
+    "UNIT_SPELLCAST_INTERRUPTED",
+    "UNIT_SPELLCAST_FAILED",
+    "UNIT_SPELLCAST_DELAYED",
+    "UNIT_SPELLCAST_CHANNEL_START",
+    "UNIT_SPELLCAST_CHANNEL_STOP",
+    "UNIT_SPELLCAST_CHANNEL_UPDATE",
+  }
+
+  local hasClassicCastEvents = false
+  if API and API.eventutils and _G.C_EventUtils and _G.C_EventUtils.IsEventValid then
+    for _, eventName in pairs(castEvents) do
+      if _G.C_EventUtils.IsEventValid(eventName) then
+        listener:RegisterEvent(eventName)
+        hasClassicCastEvents = true
+      end
+    end
+  end
+
+  listener:SetScript("OnEvent", function()
+    if event == "PLAYER_TARGET_CHANGED" then
+      RefreshCast()
+      return
+    end
+
+    -- ClassicAPI fans remote cast events out to every unit token currently
+    -- resolving to the caster, including "target" when appropriate.
+    if arg1 == "target" then
+      RefreshCast()
     end
   end)
+
+  if not hasClassicCastEvents then
+    -- Compatibility fallback for older ClassicAPI builds: discover state at
+    -- 20 Hz, while the bar itself still animates every frame when visible.
+    listener.elapsed = 0
+    listener:SetScript("OnUpdate", function()
+      this.elapsed = this.elapsed + arg1
+      if this.elapsed >= .05 then
+        this.elapsed = 0
+        RefreshCast()
+      end
+    end)
+  end
+
+  RefreshCast()
 end
