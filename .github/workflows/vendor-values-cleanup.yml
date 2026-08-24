@@ -1,0 +1,69 @@
+name: One-shot Vendor Values Cleanup
+
+on:
+  push:
+    branches: [classicapi-enhanced]
+    paths:
+      - '.github/workflows/vendor-values-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ShaguTweaks
+        uses: actions/checkout@v4
+        with:
+          ref: classicapi-enhanced
+
+      - name: Merge Vendor Values runtime
+        shell: python
+        run: |
+          from pathlib import Path
+
+          vendor = Path('mods/vendor-values.lua')
+          runtime = Path('mods/vendor-values-runtime.lua')
+          toc = Path('ShaguTweaks.toc')
+
+          vendor_text = vendor.read_text(encoding='utf-8')
+          runtime_text = runtime.read_text(encoding='utf-8')
+          toc_text = toc.read_text(encoding='utf-8')
+
+          marker = 'ShaguTweaks.SellValueDB = data\n'
+          head, sep, _ = vendor_text.partition(marker)
+          if not sep:
+              raise SystemExit('Vendor Values database marker not found')
+
+          runtime_marker = 'local function GetVendorPrice(id)\n'
+          pos = runtime_text.find(runtime_marker)
+          if pos < 0:
+              raise SystemExit('ClassicAPI Vendor Values runtime marker not found')
+
+          merged = head + marker + '\n' + runtime_text[pos:]
+          vendor.write_text(merged, encoding='utf-8', newline='\n')
+
+          toc_line = 'mods\\vendor-values-runtime.lua\n'
+          if toc_line not in toc_text:
+              raise SystemExit('Runtime entry not found in ShaguTweaks.toc')
+          toc.write_text(toc_text.replace(toc_line, '', 1), encoding='utf-8', newline='\n')
+
+          print('Merged ClassicAPI runtime into mods/vendor-values.lua')
+          print('Removed vendor-values-runtime.lua from ShaguTweaks.toc')
+
+      - name: Remove temporary runtime and workflow
+        run: |
+          git rm mods/vendor-values-runtime.lua
+          git rm .github/workflows/vendor-values-cleanup.yml
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mods/vendor-values.lua ShaguTweaks.toc
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m "Clean up Vendor Values ClassicAPI integration"
+          git push origin HEAD:classicapi-enhanced
