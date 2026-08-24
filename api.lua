@@ -19,6 +19,9 @@ API.casts = type(_G.C_Spell) == "table"
   and type(_G.C_Spell.UnitCastingInfo) == "function"
   and type(_G.C_Spell.UnitChannelInfo) == "function"
 
+API.spellrange = type(_G.C_Spell) == "table"
+  and type(_G.C_Spell.IsSpellInRange) == "function"
+
 API.auras = type(_G.C_UnitAuras) == "table"
   and type(_G.C_UnitAuras.GetAuraDataByIndex) == "function"
   and type(_G.C_UnitAuras.GetDebuffDataByIndex) == "function"
@@ -27,6 +30,7 @@ API.aurapositional = type(_G.C_UnitAuras) == "table"
   and type(_G.C_UnitAuras.UnitDebuff) == "function"
 
 API.spellinfo = type(_G.GetSpellInfo) == "function"
+API.actioninfo = type(_G.GetActionInfo) == "function"
 
 API.inventory = type(_G.C_Container) == "table"
   and type(_G.C_Container.GetContainerNumFreeSlots) == "function"
@@ -41,6 +45,7 @@ API.itemquality = API.items and type(_G.C_Item.GetItemQualityByID) == "function"
 API.itemprice = API.items and type(_G.C_Item.GetItemSellPriceByID) == "function"
 API.iteminventorytype = API.items and type(_G.C_Item.GetItemInventoryTypeByID) == "function"
 API.iteminventoryslotkey = API.items and type(_G.C_Item.GetItemInventorySlotKey) == "function"
+API.itemrange = API.items and type(_G.C_Item.IsItemInRange) == "function"
 
 API.eventutils = type(_G.C_EventUtils) == "table"
   and type(_G.C_EventUtils.IsEventValid) == "function"
@@ -115,6 +120,18 @@ API.GetChannelInfo = function(unit)
 
   return name, "", displayName or "", texture, startTime, endTime,
     isTradeSkill, notInterruptible, spellID
+end
+
+API.IsSpellInRange = function(spell, unit)
+  if API.spellrange then
+    return _G.C_Spell.IsSpellInRange(spell, unit)
+  end
+end
+
+API.GetActionInfo = function(slot)
+  if API.actioninfo then
+    return _G.GetActionInfo(slot)
+  end
 end
 
 API.GetAuraDataByIndex = function(unit, index, filter)
@@ -258,6 +275,12 @@ API.GetItemInventorySlotKey = function(inventoryType)
   if inventoryType == nil then return end
   if API.iteminventoryslotkey then
     return _G.C_Item.GetItemInventorySlotKey(inventoryType)
+  end
+end
+
+API.IsItemInRange = function(item, unit)
+  if API.itemrange then
+    return _G.C_Item.IsItemInRange(item, unit)
   end
 end
 
