@@ -28,6 +28,9 @@ API.spellinfo = type(_G.GetSpellInfo) == "function"
 API.inventory = type(_G.C_Container) == "table"
   and type(_G.C_Container.GetContainerNumFreeSlots) == "function"
 
+API.itemprice = type(_G.C_Item) == "table"
+  and type(_G.C_Item.GetItemSellPriceByID) == "function"
+
 API.merchant = type(_G.C_MerchantFrame) == "table"
   and type(_G.C_MerchantFrame.GetNumJunkItems) == "function"
   and type(_G.C_MerchantFrame.SellAllJunkItems) == "function"
@@ -139,6 +142,15 @@ API.GetContainerNumFreeSlots = function(bag)
     return _G.C_Container.GetContainerNumFreeSlots(bag)
   end
   return 0, 0
+end
+
+-- Returns the live vendor sell price in copper when the client has the item
+-- cached. ClassicAPI warms uncached item data itself and returns nil until the
+-- cache fill completes, allowing callers to keep an immediate legacy fallback.
+API.GetItemSellPriceByID = function(itemID)
+  if API.itemprice and itemID then
+    return _G.C_Item.GetItemSellPriceByID(itemID)
+  end
 end
 
 API.GetNumJunkItems = function()
