@@ -149,6 +149,13 @@ module.enable = function(self)
   ShoppingTooltip1:SetClampedToScreen(true)
   ShoppingTooltip2:SetClampedToScreen(true)
 
+  local function IsCompareKeyDown()
+    if API and API.IsShiftKeyDown then
+      return API.IsShiftKeyDown()
+    end
+    return IsShiftKeyDown()
+  end
+
   local function GetSlotType(tooltip)
     -- Prefer ClassicAPI's cache-backed inventory type. This avoids depending on
     -- localized tooltip text and works for Turtle WoW custom items when the
@@ -184,7 +191,7 @@ module.enable = function(self)
     ShoppingTooltip1:Hide()
     ShoppingTooltip2:Hide()
 
-    if not IsShiftKeyDown() then return end
+    if not IsCompareKeyDown() then return end
 
     local slotType = GetSlotType(tooltip)
     local slotName = slotType and slots[slotType]
@@ -242,8 +249,9 @@ module.enable = function(self)
 
   TrackTooltip(GameTooltip)
 
-  -- ClassicAPI exposes modifier transitions, so pressing/releasing Shift can
-  -- refresh an already visible tooltip without an always-running OnUpdate.
+  -- ClassicAPI fires MODIFIER_STATE_CHANGED after updating its own L/R key
+  -- bitmap. Reading that bitmap here makes the comparison appear immediately
+  -- when Shift is pressed while an item tooltip is already visible.
   local modifier = CreateFrame("Frame")
   if API and API.modifierstate then
     modifier:RegisterEvent("MODIFIER_STATE_CHANGED")
@@ -259,9 +267,9 @@ module.enable = function(self)
   else
     -- Compatibility fallback for an older ClassicAPI build: poll only the
     -- Shift boolean, not all tooltip lines every frame.
-    local previousShift = IsShiftKeyDown()
+    local previousShift = IsCompareKeyDown()
     modifier:SetScript("OnUpdate", function()
-      local currentShift = IsShiftKeyDown()
+      local currentShift = IsCompareKeyDown()
       if currentShift ~= previousShift then
         previousShift = currentShift
         for tooltip in pairs(trackedTooltips) do
