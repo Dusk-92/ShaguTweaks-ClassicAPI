@@ -1,0 +1,428 @@
+name: One-shot Item API Foundation
+
+on:
+  push:
+    branches: [classicapi-enhanced]
+    paths:
+      - '.github/workflows/item-api-foundation.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ShaguTweaks
+        uses: actions/checkout@v4
+        with:
+          ref: classicapi-enhanced
+
+      - name: Centralize ClassicAPI item helpers
+        shell: python
+        run: |
+          from pathlib import Path
+
+          # ------------------------------------------------------------------
+          # api.lua: add a small, reusable item compatibility layer.
+          # ------------------------------------------------------------------
+          api = Path('api.lua')
+          text = api.read_text(encoding='utf-8')
+
+          old = '''API.inventory = type(_G.C_Container) == "table"
+  and type(_G.C_Container.GetContainerNumFreeSlots) == "function"
+
+API.merchant = type(_G.C_MerchantFrame) == "table"
+'''
+          new = '''API.inventory = type(_G.C_Container) == "table"
+  and type(_G.C_Container.GetContainerNumFreeSlots) == "function"
+
+API.containeritems = type(_G.C_Container) == "table"
+  and type(_G.C_Container.GetContainerItemID) == "function"
+
+API.items = type(_G.C_Item) == "table"
+API.iteminfo = API.items and type(_G.C_Item.GetItemInfo) == "function"
+API.itemname = API.items and type(_G.C_Item.GetItemNameByID) == "function"
+API.itemquality = API.items and type(_G.C_Item.GetItemQualityByID) == "function"
+API.itemprice = API.items and type(_G.C_Item.GetItemSellPriceByID) == "function"
+
+API.merchant = type(_G.C_MerchantFrame) == "table"
+'''
+          if old not in text:
+              raise SystemExit('api.lua capability marker not found')
+          text = text.replace(old, new, 1)
+
+          old = '''API.GetContainerNumFreeSlots = function(bag)
+  if API.inventory then
+    return _G.C_Container.GetContainerNumFreeSlots(bag)
+  end
+  return 0, 0
+end
+
+API.GetNumJunkItems = function()
+'''
+          new = '''API.GetContainerNumFreeSlots = function(bag)
+  if API.inventory then
+    return _G.C_Container.GetContainerNumFreeSlots(bag)
+  end
+  return 0, 0
+end
+
+-- Item helpers use direct ClassicAPI IDs whenever possible. Legacy links remain
+-- as a fallback for compatibility with a stock 1.12-style call path.
+local function GetItemIDFromLink(link)
+  if not link then return end
+  local _, _, itemID = string.find(link, "item:(%d+)")
+  return itemID and tonumber(itemID) or nil
+end
+
+API.GetItemIDFromLink = GetItemIDFromLink
+
+API.GetContainerItemID = function(bag, slot)
+  if API.containeritems then
+    local itemID = _G.C_Container.GetContainerItemID(bag, slot)
+    if itemID then return itemID end
+  end
+
+  return GetItemIDFromLink(_G.GetContainerItemLink(bag, slot))
+end
+
+API.GetInventoryItemID = function(unit, slot)
+  if type(_G.GetInventoryItemID) == "function" then
+    local itemID = _G.GetInventoryItemID(unit, slot)
+    if itemID then return itemID end
+  end
+
+  return GetItemIDFromLink(_G.GetInventoryItemLink(unit, slot))
+end
+
+API.GetItemInfo = function(item)
+  if API.iteminfo then
+    return _G.C_Item.GetItemInfo(item)
+  end
+  return _G.GetItemInfo(item)
+end
+
+API.GetItemNameByID = function(itemID)
+  if not itemID then return end
+  if API.itemname then
+    return _G.C_Item.GetItemNameByID(itemID)
+  end
+  local name = _G.GetItemInfo(itemID)
+  return name
+end
+
+API.GetItemQualityByID = function(itemID)
+  if not itemID then return end
+  if API.itemquality then
+    return _G.C_Item.GetItemQualityByID(itemID)
+  end
+  local _, _, quality = _G.GetItemInfo(itemID)
+  return quality
+end
+
+API.GetItemSellPriceByID = function(itemID)
+  if not itemID then return end
+  if API.itemprice then
+    return _G.C_Item.GetItemSellPriceByID(itemID)
+  end
+end
+
+API.GetNumJunkItems = function()
+'''
+          if old not in text:
+              raise SystemExit('api.lua function marker not found')
+          text = text.replace(old, new, 1)
+          api.write_text(text, encoding='utf-8', newline='\n')
+
+          # ------------------------------------------------------------------
+          # helpers.lua: make common item helpers custom-item aware without
+          # changing their old public semantics.
+          # ------------------------------------------------------------------
+          helpers = Path('helpers.lua')
+          text = helpers.read_text(encoding='utf-8')
+          marker = 'ShaguTweaks.GetItemIDFromLink = function(itemLink)\n'
+          head, sep, _ = text.partition(marker)
+          if not sep:
+              raise SystemExit('helpers.lua item-helper marker not found')
+
+          tail = r'''local function LegacyItemIDFromLink(itemLink)
+  if not itemLink then return end
+  local _, _, itemID = string.find(itemLink, "item:(%d+)")
+  return itemID and tonumber(itemID) or nil
+end
+
+ShaguTweaks.GetItemIDFromLink = function(itemLink)
+  local API = ShaguTweaks.API
+  if API and API.GetItemIDFromLink then
+    return API.GetItemIDFromLink(itemLink)
+  end
+  return LegacyItemIDFromLink(itemLink)
+end
+
+ShaguTweaks.GetItemCount = function(itemName)
+  if not itemName then return 0 end
+
+  local API = ShaguTweaks.API
+  local count = 0
+  for bag = 4, 0, -1 do
+    for slot = 1, GetContainerNumSlots(bag) do
+      local _, itemCount = GetContainerItemInfo(bag, slot)
+      if itemCount then
+        local itemID
+        if API and API.GetContainerItemID then
+          itemID = API.GetContainerItemID(bag, slot)
+        else
+          itemID = LegacyItemIDFromLink(GetContainerItemLink(bag, slot))
+        end
+
+        local queryName
+        if itemID and API and API.GetItemNameByID then
+          queryName = API.GetItemNameByID(itemID)
+        elseif itemID then
+          queryName = GetItemInfo(itemID)
+        end
+
+        if queryName == itemName then
+          count = count + itemCount
+        end
+      end
+    end
+  end
+
+  return count
+end
+
+local itemLinkByNameCache = {}
+
+local function CacheItemLink(name, link)
+  if name and name ~= "" and link then
+    itemLinkByNameCache[name] = link
+  end
+  return link
+end
+
+local function FindOwnedItemLinkByName(name)
+  local API = ShaguTweaks.API
+
+  -- Bags first: this is both much cheaper than an ID sweep and works for Turtle
+  -- custom items whose IDs are far beyond vanilla's original range.
+  for bag = 0, 4 do
+    for slot = 1, GetContainerNumSlots(bag) do
+      local link = GetContainerItemLink(bag, slot)
+      if link then
+        local itemID = API and API.GetContainerItemID and API.GetContainerItemID(bag, slot)
+          or LegacyItemIDFromLink(link)
+        local itemName = itemID and API and API.GetItemNameByID and API.GetItemNameByID(itemID)
+        if not itemName then
+          local _, _, linkedName = string.find(link, "%[(.-)%]")
+          itemName = linkedName
+        end
+        if itemName == name then return link end
+      end
+    end
+  end
+
+  -- Equipped items are another cheap source of already-resolved links.
+  for slot = 0, 19 do
+    local link = GetInventoryItemLink("player", slot)
+    if link then
+      local itemID = API and API.GetInventoryItemID and API.GetInventoryItemID("player", slot)
+        or LegacyItemIDFromLink(link)
+      local itemName = itemID and API and API.GetItemNameByID and API.GetItemNameByID(itemID)
+      if not itemName then
+        local _, _, linkedName = string.find(link, "%[(.-)%]")
+        itemName = linkedName
+      end
+      if itemName == name then return link end
+    end
+  end
+end
+
+ShaguTweaks.GetItemLinkByName = function(name)
+  if not name or name == "" then return end
+  if itemLinkByNameCache[name] then
+    return itemLinkByNameCache[name]
+  end
+
+  local ownedLink = FindOwnedItemLinkByName(name)
+  if ownedLink then
+    return CacheItemLink(name, ownedLink)
+  end
+
+  -- Legacy compatibility fallback. Vanilla has no generic name -> itemID
+  -- resolver, so retain the original base-game sweep for non-owned items.
+  -- Crucially, custom items the player owns no longer depend on this limit.
+  for itemID = 1, 25818 do
+    local itemName, itemLink, itemQuality = GetItemInfo(itemID)
+    if itemName and itemName == name then
+      local _, _, _, hex = GetItemQualityColor(tonumber(itemQuality))
+      local hyperLink = hex .. "|H" .. itemLink .. "|h[" .. itemName .. "]|h" .. FONT_COLOR_CODE_CLOSE
+      return CacheItemLink(name, hyperLink)
+    end
+  end
+end
+'''
+          helpers.write_text(head + tail, encoding='utf-8', newline='\n')
+
+          # ------------------------------------------------------------------
+          # item-colors.lua: stop relying on parsed legacy links for bag/bank/
+          # inspect rarity. Direct IDs + ClassicAPI quality work for Turtle IDs.
+          # ------------------------------------------------------------------
+          colors = Path('mods/item-colors.lua')
+          text = colors.read_text(encoding='utf-8')
+
+          old = 'local T = ShaguTweaks.T\nlocal GetExpansion = ShaguTweaks.GetExpansion\n'
+          new = 'local T = ShaguTweaks.T\nlocal API = ShaguTweaks.API\nlocal GetExpansion = ShaguTweaks.GetExpansion\n'
+          if old not in text:
+              raise SystemExit('item-colors.lua header marker not found')
+          text = text.replace(old, new, 1)
+
+          old = 'local defcolor = {}\n\nlocal paperdoll_slots = {\n'
+          new = r'''local defcolor = {}
+
+local function GetQualityFromLink(link)
+  if not link then return end
+  local itemID = API and API.GetItemIDFromLink and API.GetItemIDFromLink(link)
+  if itemID and API and API.GetItemQualityByID then
+    local quality = API.GetItemQualityByID(itemID)
+    if quality ~= nil then return quality end
+  end
+
+  local _, _, istring = string.find(link, "|H(.+)|h")
+  if istring then
+    local _, _, quality = GetItemInfo(istring)
+    return quality
+  end
+end
+
+local function GetBagItemQuality(bag, slot)
+  if API and API.GetContainerItemID and API.GetItemQualityByID then
+    local itemID = API.GetContainerItemID(bag, slot)
+    if itemID then
+      local quality = API.GetItemQualityByID(itemID)
+      if quality ~= nil then return quality end
+    end
+  end
+
+  return GetQualityFromLink(GetContainerItemLink(bag, slot))
+end
+
+local function GetUnitItemQuality(unit, slot)
+  if API and API.GetInventoryItemID and API.GetItemQualityByID then
+    local itemID = API.GetInventoryItemID(unit, slot)
+    if itemID then
+      local quality = API.GetItemQualityByID(itemID)
+      if quality ~= nil then return quality end
+    end
+  end
+
+  return GetQualityFromLink(GetInventoryItemLink(unit, slot))
+end
+
+local paperdoll_slots = {
+'''
+          if old not in text:
+              raise SystemExit('item-colors.lua helper marker not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        local link = GetInventoryItemLink("target", i)
+        local border = button.ShaguTweaks_border
+'''
+          new = '''        local quality = GetUnitItemQuality("target", i)
+        local border = button.ShaguTweaks_border
+'''
+          if old not in text:
+              raise SystemExit('item-colors.lua inspect link marker not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        border:SetBackdropBorderColor(defcolor["inspect"][1], defcolor["inspect"][2], defcolor["inspect"][3], 1)
+        if link then
+          local _, _, istring = string.find(link, "|H(.+)|h")
+          local _, _, quality = GetItemInfo(istring)
+          if quality then
+            local r, g, b = GetItemQualityColor(quality)
+            border:SetBackdropBorderColor(r, g, b, 1)
+          end
+        end
+'''
+          new = '''        border:SetBackdropBorderColor(defcolor["inspect"][1], defcolor["inspect"][2], defcolor["inspect"][3], 1)
+        if quality ~= nil then
+          local r, g, b = GetItemQualityColor(quality)
+          border:SetBackdropBorderColor(r, g, b, 1)
+        end
+'''
+          if old not in text:
+              raise SystemExit('item-colors.lua inspect quality marker not found')
+          text = text.replace(old, new, 1)
+
+          old = '''            local link = GetContainerItemLink(id, button:GetID())
+            if button and button:IsShown() and link then
+              local _, _, istring  = string.find(link, "|H(.+)|h")
+              local _, _, quality = GetItemInfo(istring)
+              if quality then
+                local r, g, b = GetItemQualityColor(quality)
+                button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
+              end
+            end
+'''
+          new = '''            local quality = GetBagItemQuality(id, button:GetID())
+            if button and button:IsShown() and quality ~= nil then
+              local r, g, b = GetItemQualityColor(quality)
+              button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
+            end
+'''
+          if old not in text:
+              raise SystemExit('item-colors.lua bag quality marker not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        local button = _G["BankFrameItem"..i]
+\t\t    local link = GetContainerItemLink(-1, i)
+        if button then
+'''
+          new = '''        local button = _G["BankFrameItem"..i]
+        local quality = GetBagItemQuality(-1, i)
+        if button then
+'''
+          if old not in text:
+              raise SystemExit('item-colors.lua bank link marker not found')
+          text = text.replace(old, new, 1)
+
+          old = '''          if link then
+            local _, _, istring = string.find(link, "|H(.+)|h")
+            local _, _, q = GetItemInfo(istring)
+            if q and q > 1 then
+              local r, g, b = GetItemQualityColor(q)
+              button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
+            end
+          end
+'''
+          new = '''          if quality and quality > 1 then
+            local r, g, b = GetItemQualityColor(quality)
+            button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
+          end
+'''
+          if old not in text:
+              raise SystemExit('item-colors.lua bank quality marker not found')
+          text = text.replace(old, new, 1)
+
+          colors.write_text(text, encoding='utf-8', newline='\n')
+
+          # Sanity checks for the intended migration.
+          assert 'API.GetContainerItemID = function' in api.read_text(encoding='utf-8')
+          assert 'FindOwnedItemLinkByName' in helpers.read_text(encoding='utf-8')
+          assert 'GetBagItemQuality' in colors.read_text(encoding='utf-8')
+          print('ClassicAPI item foundation applied')
+
+      - name: Validate and commit
+        run: |
+          git diff --check
+          git diff --stat
+          git rm .github/workflows/item-api-foundation.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api.lua helpers.lua mods/item-colors.lua
+          git diff --cached --check
+          git commit -m "Centralize ClassicAPI item handling"
+          git push origin HEAD:classicapi-enhanced
