@@ -16,19 +16,28 @@ local TimeConvert = ShaguTweaks.TimeConvert
 local function GetTargetDebuff(index)
   -- ClassicAPI exposes the real aura name, stack count, dispel type and,
   -- when known by the client, the exact applied duration/expiration time.
-  -- Keep libdebuff as the compatibility fallback for older/non-API paths.
+  -- Keep libdebuff as the compatibility fallback for missing timing data.
   local aura = API and API.GetDebuffDataByIndex and API.GetDebuffDataByIndex("target", index)
   if aura then
     local duration = aura.duration and aura.duration > 0 and aura.duration or nil
-    local timeleft = -1
     local dtype = aura.dispelName and aura.dispelName ~= "" and aura.dispelName or nil
 
     if duration and aura.expirationTime and aura.expirationTime > 0 then
-      timeleft = aura.expirationTime - GetTime()
+      local timeleft = aura.expirationTime - GetTime()
       if timeleft < 0 then timeleft = 0 end
+      return aura.name, nil, aura.icon, aura.applications, dtype, duration, timeleft
     end
 
-    return aura.name, nil, aura.icon, aura.applications, dtype, duration, timeleft
+    -- ClassicAPI may know the aura but not its exact expiration when the cast
+    -- was not observed. Preserve ShaguTweaks' old estimated timer in that case.
+    if duration and libdebuff and libdebuff.UnitDebuff then
+      local effect, rank, texture, stacks, legacyType, legacyDuration, legacyTimeleft = libdebuff:UnitDebuff("target", index)
+      return aura.name or effect, rank, aura.icon or texture,
+        aura.applications or stacks, dtype or legacyType, legacyDuration, legacyTimeleft
+    end
+
+    -- Duration 0 means an indefinite aura: show metadata, but no cooldown.
+    return aura.name, nil, aura.icon, aura.applications, dtype, nil, -1
   end
 
   if libdebuff and libdebuff.UnitDebuff then
@@ -47,8 +56,8 @@ local function CreateTextCooldown(cooldown)
   cooldown.readable.text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
   cooldown.readable.text:SetPoint("CENTER", cooldown.readable, "CENTER", 0, 0)
   cooldown.readable:SetScript("OnUpdate", function()
-    parent = this:GetParent()
-    if not parent then this:Hide() end
+    local parent = this:GetParent()
+    if not parent then this:Hide() return end
 
     if not this.next then this.next = GetTime() + .1 end
     if this.next > GetTime() then return end
