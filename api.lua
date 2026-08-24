@@ -41,7 +41,9 @@ API.iteminventoryslotkey = API.items and type(_G.C_Item.GetItemInventorySlotKey)
 
 API.eventutils = type(_G.C_EventUtils) == "table"
   and type(_G.C_EventUtils.IsEventValid) == "function"
-API.modifierstate = API.eventutils
+API.modifierkeys = type(_G.IsLeftShiftKeyDown) == "function"
+  and type(_G.IsRightShiftKeyDown) == "function"
+API.modifierstate = API.eventutils and API.modifierkeys
   and _G.C_EventUtils.IsEventValid("MODIFIER_STATE_CHANGED")
 
 API.merchant = type(_G.C_MerchantFrame) == "table"
@@ -155,6 +157,21 @@ API.GetContainerNumFreeSlots = function(bag)
     return _G.C_Container.GetContainerNumFreeSlots(bag)
   end
   return 0, 0
+end
+
+-- ClassicAPI updates its own left/right modifier bitmap before firing
+-- MODIFIER_STATE_CHANGED. Prefer that state over vanilla IsShiftKeyDown(),
+-- whose merged Win32 key state can still be stale inside the event callback.
+API.IsShiftKeyDown = function()
+  if API.modifierkeys then
+    return (_G.IsLeftShiftKeyDown() or _G.IsRightShiftKeyDown()) and true or false
+  end
+
+  if type(_G.IsShiftKeyDown) == "function" then
+    return _G.IsShiftKeyDown() and true or false
+  end
+
+  return false
 end
 
 -- Direct item IDs avoid a class of Turtle WoW custom-item failures caused by
