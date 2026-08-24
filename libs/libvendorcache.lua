@@ -121,7 +121,11 @@ API.PrepareVendorValues = function()
     if count < 1 then count = 1 end
 
     local tooltipName = tooltip and tooltip:GetName()
-    local moneyFrame = tooltipName and _G[tooltipName .. "MoneyFrame1"]
+    if not tooltipName then return end
+
+    -- Vanilla 1.12 uses GameTooltipMoneyFrame (no numeric suffix). Later
+    -- FrameXML versions use MoneyFrame1, so keep both for compatibility.
+    local moneyFrame = _G[tooltipName .. "MoneyFrame"] or _G[tooltipName .. "MoneyFrame1"]
     local stackPrice = moneyFrame and moneyFrame:IsShown() and tonumber(moneyFrame.staticMoney)
     if not stackPrice or stackPrice <= 0 then return end
 
