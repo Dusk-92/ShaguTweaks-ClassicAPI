@@ -26,20 +26,46 @@ local function EnrichPlayerFromClassicAPI(name)
   return name
 end
 
-function ShaguTweaks.GetUnitData(name, active)
-  if units["players"][name] then
-    if not units["players"][name].class then
-      EnrichPlayerFromClassicAPI(name)
-    end
+local function EnrichPlayerFromCurrentChat(name)
+  if not name or not API or not API.GetCurrentChatGUID or not API.GetPlayerInfoByGUID then return end
 
+  -- ChatFrame:AddMessage can run before our CHAT_MSG_* listener has populated
+  -- the passive cache. ClassicAPI exposes the current chat sender GUID during
+  -- that same dispatch, so resolve the class synchronously when the GUID really
+  -- belongs to the player name being requested.
+  local guid = API.GetCurrentChatGUID()
+  if not guid or guid == "" then return end
+
+  local apiName, class = API.GetPlayerInfoByGUID(guid)
+  class = class and class ~= "" and class or nil
+  if not apiName or apiName == "" or not class then return end
+  if string.lower(apiName) ~= string.lower(name) then return end
+
+  units.players[name] = units.players[name] or {}
+  units.players[name].class = class
+  units.players[name].guid = guid
+
+  return name
+end
+
+function ShaguTweaks.GetUnitData(name, active)
+  if not name then return end
+
+  if not units["players"][name] then
+    EnrichPlayerFromClassicAPI(name)
+    if not units["players"][name] then
+      EnrichPlayerFromCurrentChat(name)
+    end
+  elseif not units["players"][name].class then
+    EnrichPlayerFromClassicAPI(name)
+    if not units["players"][name].class then
+      EnrichPlayerFromCurrentChat(name)
+    end
+  end
+
+  if units["players"][name] then
     local ret = units["players"][name]
     return ret.class, ret.level, ret.elite, true
-  elseif API and API.GetCachedPlayerInfoByName then
-    local key = EnrichPlayerFromClassicAPI(name)
-    if key and units["players"][key] then
-      local ret = units["players"][key]
-      return ret.class, ret.level, ret.elite, true
-    end
   end
 
   if units["mobs"][name] then
