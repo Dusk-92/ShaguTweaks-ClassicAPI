@@ -41,7 +41,15 @@ module.enable = function(self)
       WorldMapButton.player.text:SetTextColor(1, 1, 1)
       WorldMapButton.player.text:SetJustifyH("RIGHT")
 
+      WorldMapButton.coords.elapsed = 0
       WorldMapButton.coords:SetScript("OnUpdate", function()
+        -- Coordinates do not need a full render-frame refresh. 10 Hz keeps the
+        -- display responsive while avoiding repeated map/cursor queries and
+        -- string formatting on every frame while the world map is open.
+        this.elapsed = (this.elapsed or 0) + arg1
+        if this.elapsed < .1 then return end
+        this.elapsed = 0
+
         local width  = WorldMapButton:GetWidth()
         local height = WorldMapButton:GetHeight()
         local mx, my = WorldMapButton:GetCenter()
