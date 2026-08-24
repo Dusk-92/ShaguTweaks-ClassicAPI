@@ -54,7 +54,6 @@ jobs:
       - name: Regenerate Vendor Values table
         shell: python
         run: |
-          import re
           import sqlite3
           from pathlib import Path
 
@@ -72,16 +71,25 @@ jobs:
           block = (
               '-- Vendor prices generated from Penqle/tortoise-wow through the migrated Tortoise DB Viewer build.\n'
               '-- Values are per-item vendor sell prices in copper; unsellable (0-price) items are omitted.\n'
-              'local data = {\n' + '\n'.join(lines) + '\n}\n\n'
+              'local data = {\n' + '\n'.join(lines) + '\n}\n'
           )
 
           text = target.read_text(encoding='utf-8')
-          pattern = r'(?:-- Vendor prices generated.*?\n-- Values are per-item.*?\n)?local data = \{\n.*?\n\}\n\n'
-          new_text, count = re.subn(pattern, block, text, count=1, flags=re.S)
-          if count != 1:
-              raise SystemExit(f'Could not replace Vendor Values data table (matches={count})')
+          start_marker = 'local data = {'
+          next_marker = 'if GetExpansion() == "tbc" then'
+          start = text.find(start_marker)
+          next_pos = text.find(next_marker, start + len(start_marker)) if start >= 0 else -1
+          if start < 0 or next_pos < 0:
+              raise SystemExit(
+                  f'Could not locate Vendor Values data block (start={start}, next={next_pos})'
+              )
 
+          # Keep the surrounding module untouched. The historical data table may end
+          # with its closing brace on the same line as the final item, so do not rely
+          # on a formatting-sensitive regular expression here.
+          new_text = text[:start] + block + '\n\n' + text[next_pos:]
           target.write_text(new_text, encoding='utf-8', newline='\n')
+
           print(f'Generated {len(rows)} sellable item prices')
           print(f'Highest item ID: {rows[-1][0] if rows else 0}')
           print(f'File size: {target.stat().st_size} bytes')
