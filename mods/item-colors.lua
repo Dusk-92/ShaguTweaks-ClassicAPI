@@ -1,5 +1,6 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
+local API = ShaguTweaks.API
 local GetExpansion = ShaguTweaks.GetExpansion
 local AddBorder = ShaguTweaks.AddBorder
 local HookAddonOrVariable = ShaguTweaks.HookAddonOrVariable
@@ -13,6 +14,46 @@ local module = ShaguTweaks:register({
 })
 
 local defcolor = {}
+
+local function GetQualityFromLink(link)
+  if not link then return end
+
+  local itemID = API and API.GetItemIDFromLink and API.GetItemIDFromLink(link)
+  if itemID and API and API.GetItemQualityByID then
+    local quality = API.GetItemQualityByID(itemID)
+    if quality ~= nil then return quality end
+  end
+
+  local _, _, istring = string.find(link, "|H(.+)|h")
+  if istring then
+    local _, _, quality = GetItemInfo(istring)
+    return quality
+  end
+end
+
+local function GetBagItemQuality(bag, slot)
+  if API and API.GetContainerItemID and API.GetItemQualityByID then
+    local itemID = API.GetContainerItemID(bag, slot)
+    if itemID then
+      local quality = API.GetItemQualityByID(itemID)
+      if quality ~= nil then return quality end
+    end
+  end
+
+  return GetQualityFromLink(GetContainerItemLink(bag, slot))
+end
+
+local function GetUnitItemQuality(unit, slot)
+  if API and API.GetInventoryItemID and API.GetItemQualityByID then
+    local itemID = API.GetInventoryItemID(unit, slot)
+    if itemID then
+      local quality = API.GetItemQualityByID(itemID)
+      if quality ~= nil then return quality end
+    end
+  end
+
+  return GetQualityFromLink(GetInventoryItemLink(unit, slot))
+end
 
 local paperdoll_slots = {
   [0] = "AmmoSlot", "HeadSlot",
@@ -77,7 +118,7 @@ module.enable = function(self)
     local refresh_inspect = function()
       for i, v in pairs(inspect_slots) do
         local button = _G["Inspect"..v]
-        local link = GetInventoryItemLink("target", i)
+        local quality = GetUnitItemQuality("target", i)
         local border = button.ShaguTweaks_border
 
         if not border then
@@ -89,13 +130,9 @@ module.enable = function(self)
         end
 
         border:SetBackdropBorderColor(defcolor["inspect"][1], defcolor["inspect"][2], defcolor["inspect"][3], 1)
-        if link then
-          local _, _, istring = string.find(link, "|H(.+)|h")
-          local _, _, quality = GetItemInfo(istring)
-          if quality then
-            local r, g, b = GetItemQualityColor(quality)
-            border:SetBackdropBorderColor(r, g, b, 1)
-          end
+        if quality ~= nil then
+          local r, g, b = GetItemQualityColor(quality)
+          border:SetBackdropBorderColor(r, g, b, 1)
         end
       end
     end
@@ -137,14 +174,10 @@ module.enable = function(self)
 
             button.ShaguTweaks_border:SetBackdropBorderColor(defcolor["bag"][1], defcolor["bag"][2], defcolor["bag"][3], 1)
 
-            local link = GetContainerItemLink(id, button:GetID())
-            if button and button:IsShown() and link then
-              local _, _, istring  = string.find(link, "|H(.+)|h")
-              local _, _, quality = GetItemInfo(istring)
-              if quality then
-                local r, g, b = GetItemQualityColor(quality)
-                button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
-              end
+            local quality = GetBagItemQuality(id, button:GetID())
+            if button and button:IsShown() and quality ~= nil then
+              local r, g, b = GetItemQualityColor(quality)
+              button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
             end
           end
         end
@@ -170,7 +203,7 @@ module.enable = function(self)
     local refresh_bank = function()
       for i = 1, 28 do
         local button = _G["BankFrameItem"..i]
-		    local link = GetContainerItemLink(-1, i)
+        local quality = GetBagItemQuality(-1, i)
         if button then
           if not defcolor["bank"] then
             defcolor["bank"] = { button.ShaguTweaks_border:GetBackdropBorderColor() }
@@ -178,13 +211,9 @@ module.enable = function(self)
 
           button.ShaguTweaks_border:SetBackdropBorderColor(defcolor["bank"][1], defcolor["bank"][2], defcolor["bank"][3], 1)
 
-          if link then
-            local _, _, istring = string.find(link, "|H(.+)|h")
-            local _, _, q = GetItemInfo(istring)
-            if q and q > 1 then
-              local r, g, b = GetItemQualityColor(q)
-              button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
-            end
+          if quality and quality > 1 then
+            local r, g, b = GetItemQualityColor(quality)
+            button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
           end
         end
       end
@@ -206,7 +235,7 @@ module.enable = function(self)
 
       -- return early without any weapon enchants
       local mh, _, _, oh = GetWeaponEnchantInfo()
-    	if not mh and not oh then return end
+      if not mh and not oh then return end
 
       -- update weapon enchant 1
       local r, g, b = GetItemQualityColor(GetInventoryItemQuality("player", TempEnchant1:GetID()) or 1)
