@@ -80,21 +80,37 @@ local function QueryCast(unit)
   if not unit then return end
 
   -- ClassicAPI is authoritative for real unit tokens and provides exact
-  -- engine/server timing. Keep the old parser only as a compatibility layer.
-  local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo(unit)
-  if cast then
-    return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
+  -- engine/server timing. A nil result for an existing unit means that exact
+  -- GUID is not casting; don't fall back to the legacy name-keyed database,
+  -- otherwise two NPCs with the same name can share one castbar incorrectly.
+  if API and API.casts then
+    local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo(unit)
+    if cast then
+      return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
+    end
+
+    local channel
+    channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo(unit)
+    if channel then
+      return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
+    end
+
+    -- SuperWoW's GUID-keyed legacy cache is still safe because it cannot
+    -- collide merely because two creatures share the same display name.
+    if ShaguTweaks.superwow_active and not UnitIsUnit(unit, "player") then
+      local guid = API.UnitGUID(unit)
+      if guid then
+        local a, b, c, d, e, f, g, h = QueryLegacy(guid)
+        if a then return a, b, c, d, e, f, g, h end
+      end
+    end
+
+    return
   end
 
-  local channel
-  channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo(unit)
-  if channel then
-    return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
-  end
-
-  -- SuperWoW remains a second source for GUID-keyed casts when available.
+  -- Compatibility path for environments without ClassicAPI cast support.
   if ShaguTweaks.superwow_active and not UnitIsUnit(unit, "player") then
-    local guid = API.UnitGUID(unit)
+    local guid = API and API.UnitGUID and API.UnitGUID(unit)
     if guid then
       local a, b, c, d, e, f, g, h = QueryLegacy(guid)
       if a then return a, b, c, d, e, f, g, h end
