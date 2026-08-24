@@ -36,6 +36,13 @@ API.iteminfo = API.items and type(_G.C_Item.GetItemInfo) == "function"
 API.itemname = API.items and type(_G.C_Item.GetItemNameByID) == "function"
 API.itemquality = API.items and type(_G.C_Item.GetItemQualityByID) == "function"
 API.itemprice = API.items and type(_G.C_Item.GetItemSellPriceByID) == "function"
+API.iteminventorytype = API.items and type(_G.C_Item.GetItemInventoryTypeByID) == "function"
+API.iteminventoryslotkey = API.items and type(_G.C_Item.GetItemInventorySlotKey) == "function"
+
+API.eventutils = type(_G.C_EventUtils) == "table"
+  and type(_G.C_EventUtils.IsEventValid) == "function"
+API.modifierstate = API.eventutils
+  and _G.C_EventUtils.IsEventValid("MODIFIER_STATE_CHANGED")
 
 API.merchant = type(_G.C_MerchantFrame) == "table"
   and type(_G.C_MerchantFrame.GetNumJunkItems) == "function"
@@ -209,6 +216,20 @@ API.GetItemSellPriceByID = function(itemID)
   if not itemID then return end
   if API.itemprice then
     return _G.C_Item.GetItemSellPriceByID(itemID)
+  end
+end
+
+API.GetItemInventoryTypeByID = function(itemID)
+  if not itemID then return end
+  if API.iteminventorytype then
+    return _G.C_Item.GetItemInventoryTypeByID(itemID)
+  end
+end
+
+API.GetItemInventorySlotKey = function(inventoryType)
+  if inventoryType == nil then return end
+  if API.iteminventoryslotkey then
+    return _G.C_Item.GetItemInventorySlotKey(inventoryType)
   end
 end
 
