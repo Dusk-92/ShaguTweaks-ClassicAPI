@@ -50,9 +50,18 @@ local function GetActionRange(action)
             local result = SpellRange(id)
             if result ~= nil then return result end
         elseif actionType == "macro" and id then
-            -- Prefer the spell currently selected by #showtooltip. This follows
-            -- the client's own conditional resolution, including Turtle WoW
-            -- conditions that GetMacroSpell's primary-spell cache cannot model.
+            -- Macro addons such as SuperCleveRoidMacros override
+            -- IsActionInRange() specifically so their own conditional parser
+            -- can choose the currently active spell ([behind], [stealth], etc.).
+            -- Let that authoritative macro-aware result win before trying
+            -- ClassicAPI's generic macro fallbacks.
+            local macroRange = IsActionInRange(action, "target")
+            if macroRange ~= nil then
+                return macroRange
+            end
+
+            -- Generic fallback for ordinary macros that are not handled by a
+            -- dedicated macro addon: try the currently displayed action spell.
             local spellID = GetDisplayedActionSpell(action)
 
             -- Macros without a resolvable dynamic tooltip keep the cheaper
@@ -72,9 +81,9 @@ local function GetActionRange(action)
         end
     end
 
-    -- Unresolved macros/items and older ClassicAPI versions retain the native
+    -- Unresolved actions and older ClassicAPI versions retain the native
     -- action-slot check as a compatibility fallback.
-    return IsActionInRange(action)
+    return IsActionInRange(action, "target")
 end
 
 module.enable = function(self)
