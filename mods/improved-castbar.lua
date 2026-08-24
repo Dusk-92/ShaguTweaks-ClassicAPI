@@ -48,69 +48,150 @@ module.enable = function(self)
     CastingBarText:Hide()
 
     local function QueryPlayerCast()
-        local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo("player")
+        if API and API.casts then
+            local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo("player")
+            if cast then
+                return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
+            end
+
+            local channel
+            channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo("player")
+            if channel then
+                return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
+            end
+        end
+
+        local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyCastingInfo("player")
         if cast then
             return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
         end
 
         local channel
-        channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo("player")
-        if channel then
-            return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
-        end
-
-        cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyCastingInfo("player")
-        if cast then
-            return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
-        end
-
         channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyChannelInfo("player")
         if channel then
             return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
         end
     end
 
-    castbar:SetScript("OnUpdate", function()
-        local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, isChannel = QueryPlayerCast()
+    local function UpdateTimer()
+        castbar:SetAlpha(CastingBarFrame:GetAlpha())
 
-        local alpha = CastingBarFrame:GetAlpha()
-        castbar:SetAlpha(alpha)
-
-        if cast and startTime and endTime and endTime > startTime then
-            local duration = endTime - startTime
-            local max = duration / 1000
-            local cur = GetTime() - startTime / 1000
-
-            if isChannel then
-                cur = max + startTime/1000 - GetTime()
-            end
-
-            cur = cur > max and max or cur
-            cur = cur < 0 and 0 or cur
-
-            local rem = isChannel and cur or (max - cur)
-            rem = string.format("%.1f"..T["s"], rem)
-
-            castbar.spellText:SetText(cast)
-            castbar.timerText:SetText(rem)
-
-            if texture then
-                castbar.texture.icon:SetTexture(texture)
-                castbar.texture.icon:Show()
-            else
-                castbar.texture.icon:Hide()
-            end
-        else
-            if alpha == 0 then
+        local startTime = castbar.startTime
+        local endTime = castbar.endTime
+        if not startTime or not endTime or endTime <= startTime then
+            if CastingBarFrame:GetAlpha() == 0 then
                 castbar:Hide()
             end
+            return
         end
+
+        local now = GetTime()
+        local max = endTime - startTime
+        local cur
+        if castbar.isChannel then
+            cur = endTime - now
+        else
+            cur = now - startTime
+        end
+
+        cur = cur > max and max or cur
+        cur = cur < 0 and 0 or cur
+        local rem = castbar.isChannel and cur or (max - cur)
+        rem = rem < 0 and 0 or rem
+        castbar.timerText:SetText(string.format("%.1f"..T["s"], rem))
+
+        if now >= endTime then
+            castbar.startTime = nil
+            castbar.endTime = nil
+        end
+    end
+
+    local function RefreshCast()
+        local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, isChannel = QueryPlayerCast()
+
+        if not cast or not startTime or not endTime or endTime <= startTime then
+            -- Preserve Blizzard's normal fade-out: keep our last icon/text
+            -- attached until the native castbar has finished fading.
+            castbar.startTime = nil
+            castbar.endTime = nil
+            castbar.isChannel = nil
+            if CastingBarFrame:GetAlpha() == 0 then
+                castbar:Hide()
+            end
+            return
+        end
+
+        castbar.startTime = startTime / 1000
+        castbar.endTime = endTime / 1000
+        castbar.isChannel = isChannel
+        castbar.spellText:SetText(cast)
+
+        if texture then
+            castbar.texture.icon:SetTexture(texture)
+            castbar.texture.icon:Show()
+        else
+            castbar.texture.icon:Hide()
+        end
+
+        castbar.elapsed = 0
+        castbar:Show()
+        UpdateTimer()
+    end
+
+    -- The expensive cast/channel query now runs only on state-change events.
+    -- While visible, OnUpdate only animates the remaining-time text and alpha.
+    castbar.elapsed = 0
+    castbar:SetScript("OnUpdate", function()
+        this.elapsed = (this.elapsed or 0) + arg1
+        if this.elapsed < .05 then return end
+        this.elapsed = 0
+        UpdateTimer()
     end)
 
     local events = CreateFrame("Frame", nil, UIParent)
-    events:RegisterEvent("SPELLCAST_START")
-    events:RegisterEvent("SPELLCAST_CHANNEL_START")
+    events:RegisterEvent("PLAYER_ENTERING_WORLD")
+
+    local classicEvents = {
+        "UNIT_SPELLCAST_START",
+        "UNIT_SPELLCAST_STOP",
+        "UNIT_SPELLCAST_INTERRUPTED",
+        "UNIT_SPELLCAST_FAILED",
+        "UNIT_SPELLCAST_DELAYED",
+        "UNIT_SPELLCAST_CHANNEL_START",
+        "UNIT_SPELLCAST_CHANNEL_STOP",
+        "UNIT_SPELLCAST_CHANNEL_UPDATE",
+    }
+
+    local hasClassicEvents = false
+    if API and API.eventutils and _G.C_EventUtils and _G.C_EventUtils.IsEventValid then
+        for _, eventName in pairs(classicEvents) do
+            if _G.C_EventUtils.IsEventValid(eventName) then
+                events:RegisterEvent(eventName)
+                hasClassicEvents = true
+            end
+        end
+    end
+
+    if not hasClassicEvents then
+        -- Compatibility with older ClassicAPI/plain 1.12: use the original
+        -- player spellcast events as state-change triggers, not as a poller.
+        events:RegisterEvent("SPELLCAST_START")
+        events:RegisterEvent("SPELLCAST_STOP")
+        events:RegisterEvent("SPELLCAST_FAILED")
+        events:RegisterEvent("SPELLCAST_INTERRUPTED")
+        events:RegisterEvent("SPELLCAST_DELAYED")
+        events:RegisterEvent("SPELLCAST_CHANNEL_START")
+        events:RegisterEvent("SPELLCAST_CHANNEL_STOP")
+        events:RegisterEvent("SPELLCAST_CHANNEL_UPDATE")
+    end
+
     events:SetScript("OnEvent", function()
-        castbar:Show()
+        if event == "PLAYER_ENTERING_WORLD" then
+            RefreshCast()
+            return
+        end
+
+        if hasClassicEvents and arg1 ~= "player" then return end
+        RefreshCast()
     end)
 end
