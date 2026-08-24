@@ -3,6 +3,8 @@ local API = ShaguTweaks.API
 
 if not API then return end
 
+local pending = {}
+
 local function GetVendorPriceCache()
   _G.ShaguTweaks_vendor_prices = _G.ShaguTweaks_vendor_prices or {}
 
@@ -48,6 +50,8 @@ local function StoreVendorPrice(itemID, price)
     learned[itemID] = nil
   end
 
+  pending[itemID] = nil
+
   -- Make the learned value available immediately during this session too.
   if ShaguTweaks.SellValueLegacyDB and ShaguTweaks.SellValueDB then
     rawset(ShaguTweaks.SellValueDB, itemID, price)
@@ -64,6 +68,26 @@ API.RememberVendorPrice = function(itemID)
     return StoreVendorPrice(itemID, price)
   end
 end
+
+-- ClassicAPI explicitly documents that a cache miss warms the item cache and
+-- GET_ITEM_INFO_RECEIVED(itemID, success) fires when that implicit load ends.
+-- Keep only merchant-hovered item IDs pending, then persist the price exactly
+-- when ClassicAPI says the item record is ready. No polling or permanent
+-- OnUpdate is needed.
+local itemWatcher = CreateFrame("Frame")
+itemWatcher:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+itemWatcher:SetScript("OnEvent", function()
+  local itemID = tonumber(arg1)
+  if not itemID or not pending[itemID] then return end
+
+  local price = GetLiveVendorPrice(itemID)
+  if price and price > 0 then
+    StoreVendorPrice(itemID, price)
+  elseif arg2 == false or arg2 == 0 then
+    -- Definitive failed item query: don't keep a dead pending entry forever.
+    pending[itemID] = nil
+  end
+end)
 
 -- Always install the Vendor Values proxy, even if ClassicAPI's C_Item table is
 -- not ready yet during VARIABLES_LOADED. Learned prices must still survive and
@@ -104,8 +128,9 @@ API.PrepareVendorValues = function()
   API.vendorprice_tooltip_hooks = true
 
   -- Vendor Values suppresses its own price while a merchant is open because the
-  -- default UI already displays the real sell value. Learn that native value
-  -- from the player's bag tooltip so new Turtle items persist afterwards.
+  -- default UI already displays the real sell value. Hovering a bag item here
+  -- marks it for persistence. If ClassicAPI has the value immediately, save it;
+  -- otherwise GET_ITEM_INFO_RECEIVED finishes the job asynchronously.
   ShaguTweaks.hooksecurefunc(GameTooltip, "SetBagItem", function(tooltip, container, slot)
     if not MerchantFrame or not MerchantFrame:IsShown() then return end
 
@@ -113,9 +138,13 @@ API.PrepareVendorValues = function()
     local itemID = link and ShaguTweaks.GetItemIDFromLink(link)
     if not itemID then return end
 
-    -- Prefer the item-record value whenever ClassicAPI already knows it.
+    pending[itemID] = true
+
+    -- This also starts ClassicAPI's implicit cache warmup on a miss.
     if API.RememberVendorPrice(itemID) then return end
 
+    -- Immediate Vanilla tooltip fallback. This is useful if the native UI has
+    -- already populated the sell price before ClassicAPI's item record arrives.
     local _, count = GetContainerItemInfo(container, slot)
     count = tonumber(count) or 1
     if count < 1 then count = 1 end
@@ -123,8 +152,6 @@ API.PrepareVendorValues = function()
     local tooltipName = tooltip and tooltip:GetName()
     if not tooltipName then return end
 
-    -- Vanilla 1.12 uses GameTooltipMoneyFrame (no numeric suffix). Later
-    -- FrameXML versions use MoneyFrame1, so keep both for compatibility.
     local moneyFrame = _G[tooltipName .. "MoneyFrame"] or _G[tooltipName .. "MoneyFrame1"]
     local stackPrice = moneyFrame and moneyFrame:IsShown() and tonumber(moneyFrame.staticMoney)
     if not stackPrice or stackPrice <= 0 then return end
