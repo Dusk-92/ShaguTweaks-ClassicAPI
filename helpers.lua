@@ -333,33 +333,45 @@ ShaguTweaks.spairs = function(t, sortFunc)
   return orderedNext, t, nil
 end
 
-ShaguTweaks.GetItemIDFromLink = function(itemLink)
-  if not itemLink then
-    return
-  end
-
-  local foundID, _ , itemID = string.find(itemLink, "item:(%d+)")
-  if not foundID then
-    return
-  end
-
-  return tonumber(itemID)
+local function LegacyItemIDFromLink(itemLink)
+  if not itemLink then return end
+  local _, _, itemID = string.find(itemLink, "item:(%d+)")
+  return itemID and tonumber(itemID) or nil
 end
 
+ShaguTweaks.GetItemIDFromLink = function(itemLink)
+  local API = ShaguTweaks.API
+  if API and API.GetItemIDFromLink then
+    return API.GetItemIDFromLink(itemLink)
+  end
+  return LegacyItemIDFromLink(itemLink)
+end
 
 ShaguTweaks.GetItemCount = function(itemName)
+  if not itemName then return 0 end
+
+  local API = ShaguTweaks.API
   local count = 0
   for bag = 4, 0, -1 do
     for slot = 1, GetContainerNumSlots(bag) do
       local _, itemCount = GetContainerItemInfo(bag, slot)
       if itemCount then
-        local itemLink = GetContainerItemLink(bag,slot)
-        local itemID = ShaguTweaks.GetItemIDFromLink(itemLink)
-        local queryName = GetItemInfo(itemID)
-        if queryName and queryName ~= "" then
-          if queryName == itemName then
-            count = count + itemCount
-          end
+        local itemID
+        if API and API.GetContainerItemID then
+          itemID = API.GetContainerItemID(bag, slot)
+        else
+          itemID = LegacyItemIDFromLink(GetContainerItemLink(bag, slot))
+        end
+
+        local queryName
+        if itemID and API and API.GetItemNameByID then
+          queryName = API.GetItemNameByID(itemID)
+        elseif itemID then
+          queryName = GetItemInfo(itemID)
+        end
+
+        if queryName == itemName then
+          count = count + itemCount
         end
       end
     end
@@ -369,18 +381,69 @@ ShaguTweaks.GetItemCount = function(itemName)
 end
 
 local itemLinkByNameCache = {}
+
+local function CacheItemLink(name, link)
+  if name and name ~= "" and link then
+    itemLinkByNameCache[name] = link
+  end
+  return link
+end
+
+local function FindOwnedItemLinkByName(name)
+  local API = ShaguTweaks.API
+
+  -- Resolve owned items before the legacy ID sweep. This is much cheaper and
+  -- works for Turtle WoW custom item IDs beyond vanilla's original range.
+  for bag = 0, 4 do
+    for slot = 1, GetContainerNumSlots(bag) do
+      local link = GetContainerItemLink(bag, slot)
+      if link then
+        local itemID = API and API.GetContainerItemID and API.GetContainerItemID(bag, slot)
+          or LegacyItemIDFromLink(link)
+        local itemName = itemID and API and API.GetItemNameByID and API.GetItemNameByID(itemID)
+        if not itemName then
+          local _, _, linkedName = string.find(link, "%[(.-)%]")
+          itemName = linkedName
+        end
+        if itemName == name then return link end
+      end
+    end
+  end
+
+  for slot = 0, 19 do
+    local link = GetInventoryItemLink("player", slot)
+    if link then
+      local itemID = API and API.GetInventoryItemID and API.GetInventoryItemID("player", slot)
+        or LegacyItemIDFromLink(link)
+      local itemName = itemID and API and API.GetItemNameByID and API.GetItemNameByID(itemID)
+      if not itemName then
+        local _, _, linkedName = string.find(link, "%[(.-)%]")
+        itemName = linkedName
+      end
+      if itemName == name then return link end
+    end
+  end
+end
+
 ShaguTweaks.GetItemLinkByName = function(name)
+  if not name or name == "" then return end
   if itemLinkByNameCache[name] then
     return itemLinkByNameCache[name]
   end
 
+  local ownedLink = FindOwnedItemLinkByName(name)
+  if ownedLink then
+    return CacheItemLink(name, ownedLink)
+  end
+
+  -- Vanilla has no generic name -> itemID resolver. Keep the original base-game
+  -- fallback for non-owned items, but custom owned items no longer depend on it.
   for itemID = 1, 25818 do
     local itemName, itemLink, itemQuality = GetItemInfo(itemID)
-    if (itemName and itemName == name) then
+    if itemName and itemName == name then
       local _, _, _, hex = GetItemQualityColor(tonumber(itemQuality))
       local hyperLink = hex.. "|H".. itemLink .."|h["..itemName.."]|h" .. FONT_COLOR_CODE_CLOSE
-      itemLinkByNameCache[name] = hyperLink
-      return hyperLink
+      return CacheItemLink(name, hyperLink)
     end
   end
 end
