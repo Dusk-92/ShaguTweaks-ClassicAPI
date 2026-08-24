@@ -61,6 +61,7 @@ mods\nameplate-scale.lua
 mods\sell-junk.lua
 mods\unitframes-classcolor.lua
 mods\vendor-values.lua
+mods\vendor-values-classicapi.lua
 mods\worldmap-coordinates.lua
 mods\worldmap-window.lua
 mods\blue-shaman.lua
