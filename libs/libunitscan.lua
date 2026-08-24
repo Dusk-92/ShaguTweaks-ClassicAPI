@@ -12,15 +12,18 @@ local libunitscan = CreateFrame("Frame", "ShaguTweaksUnitScan", UIParent)
 local function EnrichPlayerFromClassicAPI(name)
   if not name or not API or not API.GetCachedPlayerInfoByName then return end
 
-  local _, class, _, _, _, cachedName, _, guid = API.GetCachedPlayerInfoByName(name)
+  local _, class, _, _, _, _, _, guid = API.GetCachedPlayerInfoByName(name)
+  class = class and class ~= "" and class or nil
+  guid = guid and guid ~= "" and guid or nil
   if not class and not guid then return end
 
-  local key = cachedName and cachedName ~= "" and cachedName or name
-  units.players[key] = units.players[key] or {}
-  units.players[key].class = class or units.players[key].class
-  units.players[key].guid = guid or units.players[key].guid
+  -- Keep ShaguTweaks keyed by the exact name it already knows. This avoids
+  -- duplicate SavedVariable entries if another cache normalizes name casing.
+  units.players[name] = units.players[name] or {}
+  units.players[name].class = class or units.players[name].class
+  units.players[name].guid = guid or units.players[name].guid
 
-  return key
+  return name
 end
 
 function ShaguTweaks.GetUnitData(name, active)
@@ -66,28 +69,31 @@ local function RememberPlayer(name)
   units.players = ShaguTweaks_cache["players"]
 
   -- ClassicAPI exposes the GUID of the CHAT_MSG_* sender synchronously.
-  -- Resolve class/name from the engine's existing name cache only: this is a
-  -- pure cache read and never sends a /who or any other network query.
+  -- Resolve class from the engine's existing name cache only: this is a pure
+  -- cache read and never sends a /who or any other network query.
   local guid = API and API.GetCurrentChatGUID and API.GetCurrentChatGUID()
-  local class, cachedName
+  guid = guid and guid ~= "" and guid or nil
+
+  local class
   if guid and API.GetPlayerInfoByGUID then
-    local _, apiClass, _, _, _, apiName = API.GetPlayerInfoByGUID(guid)
-    class = apiClass
-    cachedName = apiName
+    local _, apiClass = API.GetPlayerInfoByGUID(guid)
+    class = apiClass and apiClass ~= "" and apiClass or nil
   end
 
-  local key = cachedName and cachedName ~= "" and cachedName or name
-  units.players[key] = units.players[key] or {}
-  units.players[key].class = class or units.players[key].class
-  units.players[key].guid = guid or units.players[key].guid
-  units.players[key].lastseen = date("%a %d-%b-%Y")
-  units.players[key].lastseen_ts = time()
+  units.players[name] = units.players[name] or {}
+  units.players[name].class = class or units.players[name].class
+  units.players[name].guid = guid or units.players[name].guid
+  units.players[name].lastseen = date("%a %d-%b-%Y")
+  units.players[name].lastseen_ts = time()
 end
 
 local function PrunePassivePlayers()
   local now = time()
 
   for name, data in pairs(units.players) do
+    -- Normalize any empty legacy/API class token back to an unknown value.
+    if data and data.class == "" then data.class = nil end
+
     -- Keep every player whose class was learned. Only anonymous/passive chat
     -- entries expire, and only when they carry our numeric last-seen timestamp.
     if data and not data.class and data.lastseen_ts and
