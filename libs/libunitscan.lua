@@ -1,6 +1,7 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local GetExpansion = ShaguTweaks.GetExpansion
 local L = ShaguTweaks.L
+local API = ShaguTweaks.API
 
 local units = { players = {}, mobs = {} }
 local queue = { }
@@ -8,11 +9,37 @@ local PASSIVE_CACHE_TTL = 90 * 24 * 60 * 60
 
 local libunitscan = CreateFrame("Frame", "ShaguTweaksUnitScan", UIParent)
 
+local function EnrichPlayerFromClassicAPI(name)
+  if not name or not API or not API.GetCachedPlayerInfoByName then return end
+
+  local _, class, _, _, _, cachedName, _, guid = API.GetCachedPlayerInfoByName(name)
+  if not class and not guid then return end
+
+  local key = cachedName and cachedName ~= "" and cachedName or name
+  units.players[key] = units.players[key] or {}
+  units.players[key].class = class or units.players[key].class
+  units.players[key].guid = guid or units.players[key].guid
+
+  return key
+end
+
 function ShaguTweaks.GetUnitData(name, active)
   if units["players"][name] then
+    if not units["players"][name].class then
+      EnrichPlayerFromClassicAPI(name)
+    end
+
     local ret = units["players"][name]
     return ret.class, ret.level, ret.elite, true
-  elseif units["mobs"][name] then
+  elseif API and API.GetCachedPlayerInfoByName then
+    local key = EnrichPlayerFromClassicAPI(name)
+    if key and units["players"][key] then
+      local ret = units["players"][key]
+      return ret.class, ret.level, ret.elite, true
+    end
+  end
+
+  if units["mobs"][name] then
     local ret = units["mobs"][name]
     return ret.class, ret.level, ret.elite, nil
   elseif active then
@@ -21,12 +48,13 @@ function ShaguTweaks.GetUnitData(name, active)
   end
 end
 
-local function AddData(db, name, class, level, elite)
+local function AddData(db, name, class, level, elite, guid)
   if not name then return end
   units[db][name] = units[db][name] or {}
   units[db][name].class = class or units[db][name].class
   units[db][name].level = level or units[db][name].level
   units[db][name].elite = elite or units[db][name].elite
+  units[db][name].guid = guid or units[db][name].guid
   queue[name] = nil
 end
 
@@ -37,9 +65,23 @@ local function RememberPlayer(name)
   ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
   units.players = ShaguTweaks_cache["players"]
 
-  units.players[name] = units.players[name] or {}
-  units.players[name].lastseen = date("%a %d-%b-%Y")
-  units.players[name].lastseen_ts = time()
+  -- ClassicAPI exposes the GUID of the CHAT_MSG_* sender synchronously.
+  -- Resolve class/name from the engine's existing name cache only: this is a
+  -- pure cache read and never sends a /who or any other network query.
+  local guid = API and API.GetCurrentChatGUID and API.GetCurrentChatGUID()
+  local class, cachedName
+  if guid and API.GetPlayerInfoByGUID then
+    local _, apiClass, _, _, _, apiName = API.GetPlayerInfoByGUID(guid)
+    class = apiClass
+    cachedName = apiName
+  end
+
+  local key = cachedName and cachedName ~= "" and cachedName or name
+  units.players[key] = units.players[key] or {}
+  units.players[key].class = class or units.players[key].class
+  units.players[key].guid = guid or units.players[key].guid
+  units.players[key].lastseen = date("%a %d-%b-%Y")
+  units.players[key].lastseen_ts = time()
 end
 
 local function PrunePassivePlayers()
@@ -99,7 +141,8 @@ libunitscan:SetScript("OnEvent", function()
     local name = UnitName("player")
     local _, class = UnitClass("player")
     local level = UnitLevel("player")
-    AddData("players", name, class, level)
+    local guid = API and API.UnitGUID and API.UnitGUID("player")
+    AddData("players", name, class, level, nil, guid)
 
   elseif passiveChatEvents[event] then
     -- Passive cache only: remember speakers already delivered by the client.
@@ -129,7 +172,8 @@ libunitscan:SetScript("OnEvent", function()
     for i = 1, GetNumRaidMembers() do
       name, _, SubGroup, level, class = GetRaidRosterInfo(i)
       class = L["class"][class] or nil
-      AddData("players", name, class, level)
+      local guid = API and API.UnitGUID and API.UnitGUID("raid" .. i)
+      AddData("players", name, class, level, nil, guid)
     end
 
   elseif event == "PARTY_MEMBERS_CHANGED" then
@@ -139,7 +183,8 @@ libunitscan:SetScript("OnEvent", function()
       _, class = UnitClass(unit)
       name = UnitName(unit)
       level = UnitLevel(unit)
-      AddData("players", name, class, level)
+      local guid = API and API.UnitGUID and API.UnitGUID(unit)
+      AddData("players", name, class, level, nil, guid)
     end
 
   elseif event == "WHO_LIST_UPDATE" or event == "CHAT_MSG_SYSTEM" then
@@ -157,7 +202,8 @@ libunitscan:SetScript("OnEvent", function()
       _, class = UnitClass(scan)
       level = UnitLevel(scan)
       name = UnitName(scan)
-      AddData("players", name, class, level)
+      local guid = API and API.UnitGUID and API.UnitGUID(scan)
+      AddData("players", name, class, level, nil, guid)
     else
       _, class = UnitClass(scan)
       elite = UnitClassification(scan)
