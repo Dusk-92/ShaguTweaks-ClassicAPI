@@ -50,11 +50,6 @@ ShaguTweaks:SetScript("OnEvent", function()
   -- initialize overwrites
   ShaguTweaks_config.overwrites = ShaguTweaks_config.overwrites or {}
 
-  -- finalize ClassicAPI-backed shared data after all addon files are loaded
-  if ShaguTweaks.API and ShaguTweaks.API.PrepareVendorValues then
-    ShaguTweaks.API.PrepareVendorValues()
-  end
-
   -- read all registered mods
   for title, mod in pairs(ShaguTweaks.mods) do
     -- write initial default config
