@@ -6,7 +6,7 @@ local LegacyChannelInfo = ShaguTweaks.UnitChannelInfo
 
 local module = ShaguTweaks:register({
   title = T["Nameplate Castbar"],
-  description = T["Adds a castbar to the nameplate based on combat log estimations."],
+  description = T["Adds a castbar to enemy nameplates."],
   expansions = { ["vanilla"] = true },
   category = T["Nameplates"],
   enabled = true,
@@ -27,38 +27,6 @@ local function QueryLegacy(query)
   end
 end
 
-local function QueryPlateCast(plate)
-  -- nameplateN is positional, so verify its GUID before trusting a token kept
-  -- on the frame across nameplate pool recycling/reordering.
-  local unit = plate.unit
-  if unit and plate.guid and API.UnitGUID(unit) ~= plate.guid then
-    unit = nil
-  end
-
-  if unit then
-    local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo(unit)
-    if cast then
-      return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
-    end
-
-    local channel
-    channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo(unit)
-    if channel then
-      return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
-    end
-  end
-
-  -- SuperWoW remains the second source, keyed by stable GUID.
-  if ShaguTweaks.superwow_active and plate.guid then
-    local a, b, c, d, e, f, g, h = QueryLegacy(plate.guid)
-    if a then return a, b, c, d, e, f, g, h end
-  end
-
-  -- Final compatibility fallback: ShaguTweaks' original name/combat-log DB.
-  local name = plate.name and plate.name:GetText()
-  return QueryLegacy(name)
-end
-
 module.enable = function(self)
   if ShaguPlates then return end
 
@@ -68,16 +36,20 @@ module.enable = function(self)
     insets = { left = 3, right = 3, top = 3, bottom = 3 }
   }
 
+  local platesByUnit = {}
+  local useClassicNameplateTokens = false
+
   local function create_castbar(plate)
-    -- create the castbar
+    if not plate or plate.castbar then return end
+
     plate.castbar = CreateFrame("StatusBar", nil, plate)
     plate.castbar:SetPoint("BOTTOM", plate, "BOTTOM", 8, -11)
     plate.castbar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     plate.castbar:SetStatusBarColor(1, .8, 0, 1)
     plate.castbar:SetWidth(plate:GetWidth() - 22)
     plate.castbar:SetHeight(10)
+    plate.castbar.ownerPlate = plate
 
-    -- create the spell icon
     plate.castbar.texture = CreateFrame("Frame", nil, plate.castbar)
     plate.castbar.texture:SetPoint("RIGHT", plate.castbar, "LEFT", 0, 0)
     plate.castbar.texture:SetHeight(18)
@@ -89,20 +61,17 @@ module.enable = function(self)
     plate.castbar.texture:SetBackdrop(backdrop)
     plate.castbar.texture:SetBackdropBorderColor(1,.8,0)
 
-    -- castbar background
     plate.castbar.bg = plate.castbar:CreateTexture(nil, "BACKGROUND")
     plate.castbar.bg:SetTexture("Interface\\TARGETINGFRAME\\UI-StatusBar")
     plate.castbar.bg:SetVertexColor(.1, .1, 0, .8)
     plate.castbar.bg:SetAllPoints(true)
 
-    -- castbar spark
     plate.castbar.spark = plate.castbar:CreateTexture(nil, "OVERLAY")
     plate.castbar.spark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
     plate.castbar.spark:SetWidth(20)
     plate.castbar.spark:SetHeight(20)
     plate.castbar.spark:SetBlendMode("ADD")
 
-    -- castbar border
     plate.castbar.backdrop = CreateFrame("Frame", nil, plate.castbar)
     plate.castbar.backdrop:SetFrameLevel(plate.castbar:GetFrameLevel())
     plate.castbar.backdrop:SetPoint("TOPLEFT", plate.castbar, "TOPLEFT", -3, 3)
@@ -110,58 +79,250 @@ module.enable = function(self)
     plate.castbar.backdrop:SetBackdrop(backdrop)
     plate.castbar.backdrop:SetBackdropBorderColor(1,.8,0)
 
-    -- castbar spellname
     plate.castbar.text = plate.castbar:CreateFontString(nil, "HIGH", "GameFontWhite")
     plate.castbar.text:SetPoint("CENTER", plate.castbar, "CENTER", 0, 0)
-    local font, size, opts = plate.castbar.text:GetFont()
+    local font, size = plate.castbar.text:GetFont()
     plate.castbar.text:SetFont(font, size - 3, "THINOUTLINE")
 
-    -- hide castbar by default
     plate.castbar:Hide()
   end
 
-  -- Keep OnUpdate only for smooth bar animation. Cast discovery itself now
-  -- prefers ClassicAPI's engine/server-backed unit cast state.
-  table.insert(ShaguTweaks.libnameplate.OnUpdate, function(plate)
-    plate = plate or this
+  local function HideCast(plate)
+    if not plate or not plate.castbar then return end
+    plate.castbar.startTime = nil
+    plate.castbar.endTime = nil
+    plate.castbar.isChannel = nil
+    plate.castbar:Hide()
+  end
 
-    -- create castbar if not existing
+  local function QueryPlateCast(plate)
+    if not plate then return end
+
+    -- nameplateN tokens are tied to a GUID by ClassicAPI. Verify the mapping
+    -- before trusting a token kept on a recycled nameplate frame.
+    local unit = plate.unit
+    if unit and plate.guid and API.UnitGUID(unit) ~= plate.guid then
+      unit = nil
+    end
+
+    if unit and API.casts then
+      local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo(unit)
+      if cast then
+        return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
+      end
+
+      local channel
+      channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo(unit)
+      if channel then
+        return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
+      end
+
+      -- With a real ClassicAPI unit token, "no cast" is authoritative. Never
+      -- fall through to the old name-keyed database, otherwise two mobs with
+      -- the same name can incorrectly share a castbar.
+      if ShaguTweaks.superwow_active and plate.guid then
+        return QueryLegacy(plate.guid)
+      end
+      return
+    end
+
+    -- SuperWoW's GUID path is safe because it identifies the exact creature.
+    if ShaguTweaks.superwow_active and plate.guid then
+      local a, b, c, d, e, f, g, h = QueryLegacy(plate.guid)
+      if a then return a, b, c, d, e, f, g, h end
+    end
+
+    -- Only legacy environments without ClassicAPI nameplate identity are
+    -- allowed to fall back to names. This preserves old compatibility while
+    -- preventing same-name leakage on the ClassicAPI path.
+    if not useClassicNameplateTokens then
+      local name = plate.name and plate.name:GetText()
+      return QueryLegacy(name)
+    end
+  end
+
+  local function UpdateProgress(plate)
+    if not plate or not plate.castbar then return end
+    local bar = plate.castbar
+    local startTime = bar.startTime
+    local endTime = bar.endTime
+
+    if not startTime or not endTime or endTime <= startTime then
+      HideCast(plate)
+      return
+    end
+
+    local now = GetTime()
+    if now >= endTime then
+      HideCast(plate)
+      return
+    end
+
+    local max = endTime - startTime
+    local cur
+    if bar.isChannel then
+      cur = endTime - now
+    else
+      cur = now - startTime
+    end
+
+    cur = cur > max and max or cur
+    cur = cur < 0 and 0 or cur
+    bar:SetValue(cur)
+
+    local percent = max > 0 and cur / max or 0
+    local x = bar:GetWidth() * percent
+    bar.spark:ClearAllPoints()
+    bar.spark:SetPoint("CENTER", bar, "LEFT", x, 0)
+    bar:SetAlpha(plate:GetAlpha())
+  end
+
+  local function RefreshPlate(plate)
+    if not plate then return end
     if not plate.castbar then create_castbar(plate) end
 
     local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, isChannel = QueryPlateCast(plate)
+    if not cast or not startTime or not endTime or endTime <= startTime then
+      HideCast(plate)
+      return
+    end
 
-    if cast and startTime and endTime and endTime > startTime then
-      local duration = endTime - startTime
-      local max = duration / 1000
-      local cur = GetTime() - startTime / 1000
+    local bar = plate.castbar
+    bar.startTime = startTime / 1000
+    bar.endTime = endTime / 1000
+    bar.isChannel = isChannel
 
-      if isChannel then
-        cur = max + startTime/1000 - GetTime()
-      end
+    local max = bar.endTime - bar.startTime
+    bar:SetMinMaxValues(0, max)
+    bar.text:SetText(cast)
 
-      cur = cur > max and max or cur
-      cur = cur < 0 and 0 or cur
-
-      plate.castbar:Show()
-      plate.castbar:SetMinMaxValues(0, max)
-      plate.castbar:SetValue(cur)
-
-      local percent = cur / max
-      local x = plate.castbar:GetWidth()*percent
-      plate.castbar.spark:SetPoint("CENTER", plate.castbar, "LEFT", x, 0)
-
-      plate.castbar.text:SetText(cast)
-
-      if texture then
-        plate.castbar.texture.icon:SetTexture(texture)
-        plate.castbar.texture.icon:Show()
-      else
-        plate.castbar.texture.icon:Hide()
-      end
-
-      plate.castbar:SetAlpha(plate:GetAlpha())
+    if texture then
+      bar.texture.icon:SetTexture(texture)
+      bar.texture.icon:Show()
     else
-      plate.castbar:Hide()
+      bar.texture.icon:Hide()
+    end
+
+    bar:Show()
+    UpdateProgress(plate)
+  end
+
+  local function AttachUnit(unit)
+    if not unit or not API.GetNamePlateForUnit then return end
+    local plate = API.GetNamePlateForUnit(unit)
+    if not plate then return end
+
+    local oldUnit = plate.unit
+    if oldUnit and oldUnit ~= unit and platesByUnit[oldUnit] == plate then
+      platesByUnit[oldUnit] = nil
+    end
+
+    plate.unit = unit
+    plate.guid = API.UnitGUID(unit)
+    platesByUnit[unit] = plate
+
+    if not plate.castbar then create_castbar(plate) end
+    RefreshPlate(plate)
+    return plate
+  end
+
+  -- A castbar animates only while visible. Hidden bars receive no useful work,
+  -- while cast discovery itself is driven by ClassicAPI events below.
+  local function EnableBarAnimation(plate)
+    if not plate or not plate.castbar or plate.castbar.animationHooked then return end
+    plate.castbar.animationHooked = true
+    plate.castbar:SetScript("OnUpdate", function()
+      local owner = this.ownerPlate
+      if owner then UpdateProgress(owner) end
+    end)
+  end
+
+  local oldCreate = create_castbar
+  create_castbar = function(plate)
+    oldCreate(plate)
+    EnableBarAnimation(plate)
+  end
+
+  local listener = CreateFrame("Frame")
+  local eventValid = API and API.eventutils and _G.C_EventUtils and _G.C_EventUtils.IsEventValid
+
+  if eventValid and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
+    and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_REMOVED") then
+    listener:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+    listener:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+    useClassicNameplateTokens = true
+  end
+
+  local castEvents = {
+    "UNIT_SPELLCAST_START",
+    "UNIT_SPELLCAST_STOP",
+    "UNIT_SPELLCAST_INTERRUPTED",
+    "UNIT_SPELLCAST_FAILED",
+    "UNIT_SPELLCAST_DELAYED",
+    "UNIT_SPELLCAST_CHANNEL_START",
+    "UNIT_SPELLCAST_CHANNEL_STOP",
+    "UNIT_SPELLCAST_CHANNEL_UPDATE",
+  }
+
+  local hasClassicCastEvents = false
+  if eventValid then
+    for _, eventName in pairs(castEvents) do
+      if _G.C_EventUtils.IsEventValid(eventName) then
+        listener:RegisterEvent(eventName)
+        hasClassicCastEvents = true
+      end
+    end
+  end
+
+  listener:SetScript("OnEvent", function()
+    if event == "NAME_PLATE_UNIT_ADDED" then
+      AttachUnit(arg1)
+      return
+    end
+
+    if event == "NAME_PLATE_UNIT_REMOVED" then
+      local unit = arg1
+      local plate = platesByUnit[unit]
+      if not plate and API.GetNamePlateForUnit then
+        plate = API.GetNamePlateForUnit(unit)
+      end
+
+      if plate then
+        HideCast(plate)
+        if plate.unit == unit then
+          plate.unit = nil
+          plate.guid = nil
+        end
+      end
+      platesByUnit[unit] = nil
+      return
+    end
+
+    local unit = arg1
+    if unit and string.find(unit, "^nameplate%d+$") then
+      local plate = platesByUnit[unit] or AttachUnit(unit)
+      if plate then RefreshPlate(plate) end
     end
   end)
+
+  if useClassicNameplateTokens and hasClassicCastEvents then
+    -- ClassicAPI owns identity and cast discovery. libnameplate is still used
+    -- by the other visual modules, but this module no longer queries every
+    -- visible plate's cast state on every rendered frame.
+    table.insert(ShaguTweaks.libnameplate.OnShow, function(plate)
+      plate = plate or this
+      if plate.unit then
+        RefreshPlate(plate)
+      end
+    end)
+  else
+    -- Compatibility path for older ClassicAPI / plain Vanilla. Preserve the
+    -- original per-plate discovery behavior where modern nameplate tokens or
+    -- spellcast events do not exist.
+    table.insert(ShaguTweaks.libnameplate.OnUpdate, function(plate)
+      plate = plate or this
+      if not plate.castbar then create_castbar(plate) end
+      RefreshPlate(plate)
+    end)
+  end
 end
