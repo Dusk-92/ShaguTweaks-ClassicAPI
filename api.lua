@@ -28,6 +28,15 @@ API.spellinfo = type(_G.GetSpellInfo) == "function"
 API.inventory = type(_G.C_Container) == "table"
   and type(_G.C_Container.GetContainerNumFreeSlots) == "function"
 
+API.containeritems = type(_G.C_Container) == "table"
+  and type(_G.C_Container.GetContainerItemID) == "function"
+
+API.items = type(_G.C_Item) == "table"
+API.iteminfo = API.items and type(_G.C_Item.GetItemInfo) == "function"
+API.itemname = API.items and type(_G.C_Item.GetItemNameByID) == "function"
+API.itemquality = API.items and type(_G.C_Item.GetItemQualityByID) == "function"
+API.itemprice = API.items and type(_G.C_Item.GetItemSellPriceByID) == "function"
+
 API.merchant = type(_G.C_MerchantFrame) == "table"
   and type(_G.C_MerchantFrame.GetNumJunkItems) == "function"
   and type(_G.C_MerchantFrame.SellAllJunkItems) == "function"
@@ -139,6 +148,68 @@ API.GetContainerNumFreeSlots = function(bag)
     return _G.C_Container.GetContainerNumFreeSlots(bag)
   end
   return 0, 0
+end
+
+-- Direct item IDs avoid a class of Turtle WoW custom-item failures caused by
+-- relying exclusively on legacy item-link parsing.
+local function GetItemIDFromLink(link)
+  if not link then return end
+  local _, _, itemID = string.find(link, "item:(%d+)")
+  return itemID and tonumber(itemID) or nil
+end
+
+API.GetItemIDFromLink = GetItemIDFromLink
+
+API.GetContainerItemID = function(bag, slot)
+  if API.containeritems then
+    local itemID = _G.C_Container.GetContainerItemID(bag, slot)
+    if itemID then return itemID end
+  end
+
+  return GetItemIDFromLink(_G.GetContainerItemLink(bag, slot))
+end
+
+API.GetInventoryItemID = function(unit, slot)
+  if type(_G.GetInventoryItemID) == "function" then
+    local itemID = _G.GetInventoryItemID(unit, slot)
+    if itemID then return itemID end
+  end
+
+  return GetItemIDFromLink(_G.GetInventoryItemLink(unit, slot))
+end
+
+API.GetItemInfo = function(item)
+  if API.iteminfo then
+    return _G.C_Item.GetItemInfo(item)
+  end
+  return _G.GetItemInfo(item)
+end
+
+API.GetItemNameByID = function(itemID)
+  if not itemID then return end
+  if API.itemname then
+    return _G.C_Item.GetItemNameByID(itemID)
+  end
+
+  local name = _G.GetItemInfo(itemID)
+  return name
+end
+
+API.GetItemQualityByID = function(itemID)
+  if not itemID then return end
+  if API.itemquality then
+    return _G.C_Item.GetItemQualityByID(itemID)
+  end
+
+  local _, _, quality = _G.GetItemInfo(itemID)
+  return quality
+end
+
+API.GetItemSellPriceByID = function(itemID)
+  if not itemID then return end
+  if API.itemprice then
+    return _G.C_Item.GetItemSellPriceByID(itemID)
+  end
 end
 
 API.GetNumJunkItems = function()
