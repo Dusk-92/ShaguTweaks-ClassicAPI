@@ -8,6 +8,7 @@ local API = ShaguTweaks.API
 local current_unit = "none"
 local current_guid = nil
 local statusbar = nil
+local tooltip_from_mouseover = false
 
 local direct_units = { "mouseover", "target", "focus", "player", "pet" }
 
@@ -21,6 +22,42 @@ local function UnitMatchesGUID(unit, guid)
   end
 
   return false
+end
+
+local function GetTooltipGUID()
+  if type(GameTooltip.GetUnitGUID) == "function" then
+    local _, guid = GameTooltip:GetUnitGUID()
+    return guid
+  end
+end
+
+local function TooltipMatchesMouseover()
+  if not UnitExists("mouseover") then return false end
+
+  local guid = GetTooltipGUID()
+  if guid then
+    return UnitMatchesGUID("mouseover", guid)
+  end
+
+  -- Compatibility fallback for clients without the ClassicAPI tooltip GUID.
+  local tooltipName = GameTooltipTextLeft1:GetText()
+  return tooltipName and
+    (UnitName("mouseover") == tooltipName or UnitPVPName("mouseover") == tooltipName)
+end
+
+local function ResetTooltipIdentity()
+  current_unit = "none"
+  current_guid = nil
+  tooltip_from_mouseover = false
+
+  if statusbar then
+    statusbar.name = nil
+    statusbar.level = nil
+    statusbar.lastHP = nil
+    statusbar.lastHPMax = nil
+    statusbar.lastName = nil
+    statusbar.lastLevel = nil
+  end
 end
 
 local function FindUnitByGUID(guid)
@@ -86,20 +123,18 @@ local function GetUnit()
   -- ClassicAPI stores the actual unit GUID on GameTooltip. Prefer it over the
   -- old name-comparison heuristic, which can misidentify units with matching
   -- display names or PvP titles.
-  if type(GameTooltip.GetUnitGUID) == "function" then
-    local _, guid = GameTooltip:GetUnitGUID()
-    if guid then
-      if current_guid == guid and current_unit ~= "none" and
-        UnitMatchesGUID(current_unit, guid) then
-        return current_unit
-      end
+  local guid = GetTooltipGUID()
+  if guid then
+    if current_guid == guid and current_unit ~= "none" and
+      UnitMatchesGUID(current_unit, guid) then
+      return current_unit
+    end
 
-      local unit = FindUnitByGUID(guid)
-      if unit then
-        current_guid = guid
-        current_unit = unit
-        return current_unit
-      end
+    local unit = FindUnitByGUID(guid)
+    if unit then
+      current_guid = guid
+      current_unit = unit
+      return current_unit
     end
   end
 
@@ -121,6 +156,12 @@ local function UpdateTooltip()
     updating = false
     return
   end
+
+  -- Remember whether this particular unit tooltip came from the world
+  -- mouseover. If the same GUID is also the selected target, GetUnit() can
+  -- legitimately resolve it as "target" after mouseover ends; this flag keeps
+  -- the tooltip lifetime tied to the cursor instead of the target token.
+  tooltip_from_mouseover = TooltipMatchesMouseover()
 
   local pvpname = UnitPVPName(unit)
   local name = UnitName(unit)
@@ -258,11 +299,22 @@ module.enable = function(self)
   -- update tooltip whenever it gets shown
   local details = CreateFrame("Frame", nil, GameTooltip)
   details:SetScript("OnShow", UpdateTooltip)
+  details:SetScript("OnHide", ResetTooltipIdentity)
 
   -- refresh the currently displayed unit identity
   statusbar = CreateFrame("Frame", nil, GameTooltipStatusBar)
   statusbar:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
   statusbar:SetScript("OnEvent", function()
+    -- When a world-unit mouseover ends, the GameTooltip can still contain that
+    -- unit's GUID for this event. If that unit is also selected as target, the
+    -- GUID resolver would otherwise remap the stale tooltip to "target" and
+    -- GameTooltip:Show() would keep it stuck on screen.
+    if not UnitExists("mouseover") and tooltip_from_mouseover then
+      ResetTooltipIdentity()
+      GameTooltip:Hide()
+      return
+    end
+
     local unit = GetUnit()
     if unit ~= "none" then
       this.name = UnitName(unit)
