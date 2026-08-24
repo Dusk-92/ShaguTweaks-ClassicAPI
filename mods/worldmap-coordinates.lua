@@ -19,7 +19,10 @@ module.enable = function(self)
 
     -- coordinates
     if not WorldMapButton.coords then
-      WorldMapButton.coords = CreateFrame("Frame", "pfWorldMapButtonCoords", WorldMapButton)
+      -- These helper frames are only accessed through WorldMapButton fields and
+      -- never need global names. The old code gave both frames the exact same
+      -- global name, which can collide in Vanilla's global frame registry.
+      WorldMapButton.coords = CreateFrame("Frame", nil, WorldMapButton)
       WorldMapButton.coords.text = WorldMapButton.coords:CreateFontString(nil, "OVERLAY")
       WorldMapButton.coords.text:SetPoint("BOTTOMLEFT", WorldMapButton, "BOTTOMLEFT", 3, -21)
       WorldMapButton.coords.text:SetFontObject(GameFontWhite)
@@ -31,7 +34,7 @@ module.enable = function(self)
         WorldMapButton.coords.text:SetPoint("LEFT", Gatherer_WorldMapDisplay, "RIGHT", 3, -21)
       end
 
-      WorldMapButton.player = CreateFrame("Frame", "pfWorldMapButtonCoords", WorldMapButton)
+      WorldMapButton.player = CreateFrame("Frame", nil, WorldMapButton)
       WorldMapButton.player.text = WorldMapButton.player:CreateFontString(nil, "OVERLAY")
       WorldMapButton.player.text:SetPoint("BOTTOMRIGHT", WorldMapButton, "BOTTOMRIGHT", -3, -21)
       WorldMapButton.player.text:SetFontObject(GameFontWhite)
