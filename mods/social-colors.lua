@@ -42,8 +42,9 @@ local function CacheVisibleOnlineFriends(playerdb)
     local name, level, class, _, connected = GetFriendInfo(off + i)
     if not name or name == _G.UNKNOWN then break end
 
-    if connected and class and class ~= _G.UNKNOWN then
-      local ccolor = RAID_CLASS_COLORS[L["class"][class]]
+    if connected then
+      local classToken = class and class ~= _G.UNKNOWN and L["class"][class] or GetUnitData(name)
+      local ccolor = classToken and RAID_CLASS_COLORS[classToken]
       local lcolor = GetDifficultyColor(tonumber(level))
 
       if ccolor and lcolor then
@@ -179,28 +180,32 @@ do -- add class colors to chat
         local caption = friendName or friendLoc
 
         if connected then
-          if not class or class == _G.UNKNOWN then break end
-          local ccolor = RAID_CLASS_COLORS[L["class"][class]] or { 1, 1, 1 }
+          local classToken = class and class ~= _G.UNKNOWN and L["class"][class] or GetUnitData(name)
+          local ccolor = classToken and RAID_CLASS_COLORS[classToken]
           local lcolor = GetDifficultyColor(tonumber(level)) or { 1, 1, 1 }
+          local displayZone = zone or ""
 
-          zone = ( zone == playerzone and "|cffffffff" or "|cffcccccc" ) .. zone .. "|r"
-          local cname = rgbhex(ccolor) .. name .. "|r"
+          displayZone = (displayZone == playerzone and "|cffffffff" or "|cffcccccc") .. displayZone .. "|r"
+          local cname = ccolor and (rgbhex(ccolor) .. name .. "|r") or name
           local clevel = rgbhex(lcolor) .. level .. "|r"
+          local classLabel = class and class ~= _G.UNKNOWN and class or _G.UNKNOWN
 
-          playerdb[name] = playerdb[name] or {}
-          playerdb[name].lastseen = date("%a %d-%b-%Y")
-          playerdb[name].cname = cname
-          playerdb[name].clevel = clevel
-          playerdb[name].cclass = ccolor
+          if ccolor then
+            playerdb[name] = playerdb[name] or {}
+            playerdb[name].lastseen = date("%a %d-%b-%Y")
+            playerdb[name].cname = cname
+            playerdb[name].clevel = clevel
+            playerdb[name].cclass = ccolor
+          end
 
           if friendName then
             friendName:SetText(cname)
-            friendLoc:SetText(format(TEXT(FRIENDS_LIST_TEMPLATE), zone, status))
+            friendLoc:SetText(format(TEXT(FRIENDS_LIST_TEMPLATE), displayZone, status))
           else
-            friendLoc:SetText(format(TEXT(FRIENDS_LIST_TEMPLATE), cname, zone, status))
+            friendLoc:SetText(format(TEXT(FRIENDS_LIST_TEMPLATE), cname, displayZone, status))
           end
 
-          friendInfo:SetText(format(TEXT(friendinfo), clevel, class, ""))
+          friendInfo:SetText(format(TEXT(friendinfo), clevel, classLabel, ""))
           caption:SetVertexColor(1,1,1,.9)
           friendInfo:SetVertexColor(1,1,1,.9)
         else
@@ -240,9 +245,12 @@ do -- add class colors to chat
           WhoFrameTotals:SetText("|cffffffff" .. format(GetText("WHO_FRAME_TOTAL_TEMPLATE", nil, num), num).."  |cffaaaaaa"..displayedText)
         end
 
-        class = L["class"][class]
+        local classToken = class and L["class"][class] or (name and GetUnitData(name))
+        local nameButton = _G["WhoFrameButton"..i.."Name"]
+        local classButton = _G["WhoFrameButton"..i.."Class"]
 
-        _G["WhoFrameButton"..i.."Name"]:SetTextColor(NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
+        nameButton:SetTextColor(NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
+        classButton:SetTextColor(NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
 
         if (UIDropDownMenu_GetSelectedID(WhoFrameDropDown) == 1) then
           if (zone == playerzone) then
@@ -266,13 +274,16 @@ do -- add class colors to chat
           end
         end
 
-        if class then
-          local color = RAID_CLASS_COLORS[class]
-          _G["WhoFrameButton"..i.."Class"]:SetTextColor(color.r,color.g,color.b,1)
+        if classToken then
+          local color = RAID_CLASS_COLORS[classToken]
+          nameButton:SetTextColor(color.r,color.g,color.b,1)
+          classButton:SetTextColor(color.r,color.g,color.b,1)
         end
 
-        local color = GetDifficultyColor(level)
-        _G["WhoFrameButton"..i.."Level"]:SetTextColor(color.r, color.g, color.b)
+        if level then
+          local color = GetDifficultyColor(level)
+          _G["WhoFrameButton"..i.."Level"]:SetTextColor(color.r, color.g, color.b)
+        end
       end
     end)
   end
