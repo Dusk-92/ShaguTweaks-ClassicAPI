@@ -11,68 +11,18 @@ local module = ShaguTweaks:register({
     enabled = nil,
 })
 
-local rangeTooltip
-
-local function SpellRange(spellID)
-    if not spellID or not API or not API.IsSpellInRange then return end
-
-    local inRange = API.IsSpellInRange(spellID, "target")
-    if inRange ~= nil then
-        return inRange and 1 or 0
-    end
-end
-
-local function GetDisplayedActionSpell(action)
-    -- GetMacroSpell() only exposes the macro parser's cached primary spell.
-    -- For conditional macros (#showtooltip + [stealth]/[behind]/etc.), ask the
-    -- action tooltip which spell the client is displaying right now instead.
-    -- ClassicAPI's GameTooltip:GetSpell() then gives us the resolved spellID.
-    if not _G.GameTooltip or type(_G.GameTooltip.GetSpell) ~= "function" then return end
-
-    if not rangeTooltip then
-        rangeTooltip = CreateFrame("GameTooltip", "ShaguTweaksRangeTooltip", UIParent, "GameTooltipTemplate")
-        rangeTooltip:SetOwner(UIParent, "ANCHOR_NONE")
-    end
-
-    rangeTooltip:ClearLines()
-    rangeTooltip:SetAction(action)
-    local _, _, spellID = rangeTooltip:GetSpell()
-    rangeTooltip:Hide()
-    return spellID
-end
-
 local function GetActionRange(action)
-    -- ClassicAPI resolves the action to its real spell/item/macro descriptor.
+    -- ClassicAPI can resolve a real spell/item action and run the same
+    -- range-only engine test directly against the target unit. This avoids
+    -- relying on the old action-slot heuristic for normal spell buttons.
     if API and API.GetActionInfo then
         local actionType, id = API.GetActionInfo(action)
 
-        if actionType == "spell" and id then
-            local result = SpellRange(id)
-            if result ~= nil then return result end
-        elseif actionType == "macro" and id then
-            -- Macro addons such as SuperCleveRoidMacros override
-            -- IsActionInRange() specifically so their own conditional parser
-            -- can choose the currently active spell ([behind], [stealth], etc.).
-            -- Let that authoritative macro-aware result win before trying
-            -- ClassicAPI's generic macro fallbacks.
-            local macroRange = IsActionInRange(action, "target")
-            if macroRange ~= nil then
-                return macroRange
+        if actionType == "spell" and id and API.IsSpellInRange then
+            local inRange = API.IsSpellInRange(id, "target")
+            if inRange ~= nil then
+                return inRange and 1 or 0
             end
-
-            -- Generic fallback for ordinary macros that are not handled by a
-            -- dedicated macro addon: try the currently displayed action spell.
-            local spellID = GetDisplayedActionSpell(action)
-
-            -- Macros without a resolvable dynamic tooltip keep the cheaper
-            -- primary-spell reader as a compatibility fallback.
-            if not spellID and API.GetMacroSpell then
-                local _, _, primarySpellID = API.GetMacroSpell(id)
-                spellID = primarySpellID
-            end
-
-            local result = SpellRange(spellID)
-            if result ~= nil then return result end
         elseif actionType == "item" and id and API.IsItemInRange then
             local inRange = API.IsItemInRange(id, "target")
             if inRange ~= nil then
@@ -81,9 +31,9 @@ local function GetActionRange(action)
         end
     end
 
-    -- Unresolved actions and older ClassicAPI versions retain the native
-    -- action-slot check as a compatibility fallback.
-    return IsActionInRange(action, "target")
+    -- Macros, unresolved bag-item actions and older ClassicAPI versions keep
+    -- Vanilla's native action-slot range check as the compatibility fallback.
+    return IsActionInRange(action)
 end
 
 module.enable = function(self)
