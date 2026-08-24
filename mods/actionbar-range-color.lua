@@ -11,6 +11,8 @@ local module = ShaguTweaks:register({
     enabled = nil,
 })
 
+local rangeTooltip
+
 local function SpellRange(spellID)
     if not spellID or not API or not API.IsSpellInRange then return end
 
@@ -20,18 +22,46 @@ local function SpellRange(spellID)
     end
 end
 
+local function GetDisplayedActionSpell(action)
+    -- GetMacroSpell() only exposes the macro parser's cached primary spell.
+    -- For conditional macros (#showtooltip + [stealth]/[behind]/etc.), ask the
+    -- action tooltip which spell the client is displaying right now instead.
+    -- ClassicAPI's GameTooltip:GetSpell() then gives us the resolved spellID.
+    if not _G.GameTooltip or type(_G.GameTooltip.GetSpell) ~= "function" then return end
+
+    if not rangeTooltip then
+        rangeTooltip = CreateFrame("GameTooltip", "ShaguTweaksRangeTooltip", UIParent, "GameTooltipTemplate")
+        rangeTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+    end
+
+    rangeTooltip:ClearLines()
+    rangeTooltip:SetAction(action)
+    local _, _, spellID = rangeTooltip:GetSpell()
+    rangeTooltip:Hide()
+    return spellID
+end
+
 local function GetActionRange(action)
     -- ClassicAPI resolves the action to its real spell/item/macro descriptor.
-    -- For macros, resolve the macro's cached primary spell before testing range;
-    -- Vanilla IsActionInRange() commonly returns nil for macro action slots.
     if API and API.GetActionInfo then
         local actionType, id = API.GetActionInfo(action)
 
         if actionType == "spell" and id then
             local result = SpellRange(id)
             if result ~= nil then return result end
-        elseif actionType == "macro" and id and API.GetMacroSpell then
-            local _, _, spellID = API.GetMacroSpell(id)
+        elseif actionType == "macro" and id then
+            -- Prefer the spell currently selected by #showtooltip. This follows
+            -- the client's own conditional resolution, including Turtle WoW
+            -- conditions that GetMacroSpell's primary-spell cache cannot model.
+            local spellID = GetDisplayedActionSpell(action)
+
+            -- Macros without a resolvable dynamic tooltip keep the cheaper
+            -- primary-spell reader as a compatibility fallback.
+            if not spellID and API.GetMacroSpell then
+                local _, _, primarySpellID = API.GetMacroSpell(id)
+                spellID = primarySpellID
+            end
+
             local result = SpellRange(spellID)
             if result ~= nil then return result end
         elseif actionType == "item" and id and API.IsItemInRange then
