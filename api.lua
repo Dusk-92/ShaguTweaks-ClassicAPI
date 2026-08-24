@@ -159,14 +159,11 @@ local function GetVendorPriceCache()
   return ShaguTweaks_cache["vendor_prices"]
 end
 
--- Persist only prices that add something to the original static database:
+-- Store only prices that add something to the original static database:
 -- new Turtle/custom items or prices changed by Turtle WoW. This keeps the
 -- per-character SavedVariables cache very small.
-API.RememberVendorPrice = function(itemID)
-  if not API.itemprice or type(itemID) ~= "number" then return end
-
-  local price = API.GetItemSellPriceByID(itemID)
-  if not price or price <= 0 then return end
+local function StoreVendorPrice(itemID, price)
+  if type(itemID) ~= "number" or type(price) ~= "number" or price <= 0 then return end
 
   local learned = GetVendorPriceCache()
   local legacy = ShaguTweaks.SellValueLegacyDB or ShaguTweaks.SellValueDB
@@ -179,13 +176,24 @@ API.RememberVendorPrice = function(itemID)
     learned[itemID] = nil
   end
 
-  -- If the ClassicAPI proxy is already active, make this confirmed live value
+  -- If the ClassicAPI proxy is already active, make this confirmed value
   -- immediately available without another lookup during the current session.
   if ShaguTweaks.SellValueLegacyDB and ShaguTweaks.SellValueDB then
     rawset(ShaguTweaks.SellValueDB, itemID, price)
   end
 
   return price
+end
+
+API.StoreVendorPrice = StoreVendorPrice
+
+API.RememberVendorPrice = function(itemID)
+  if not API.itemprice or type(itemID) ~= "number" then return end
+
+  local price = API.GetItemSellPriceByID(itemID)
+  if price and price > 0 then
+    return StoreVendorPrice(itemID, price)
+  end
 end
 
 -- Vendor Values keeps its original static database as the final fallback.
@@ -230,30 +238,41 @@ API.PrepareVendorValues = function()
   ShaguTweaks.SellValueLegacyDB = legacy
   ShaguTweaks.SellValueDB = live
 
-  -- Vendor Values intentionally suppresses its own tooltip price while a
-  -- merchant is open because the default UI already shows it there. Learn the
-  -- ClassicAPI price from bag/merchant tooltips anyway so new Turtle items are
-  -- available immediately after closing the merchant and after /reload.
+  -- Vendor Values intentionally suppresses its own price while a merchant is
+  -- open because vanilla already displays the real sell value there. If
+  -- ClassicAPI's item record still lacks a new Turtle item's sell price, read
+  -- the native money frame *after* SetBagItem built the merchant tooltip and
+  -- persist that value. The merchant tooltip reports the current stack value,
+  -- so convert it back to the per-item price used by SellValueDB.
   if not API.vendorprice_tooltip_hooks then
     API.vendorprice_tooltip_hooks = true
 
-    local HookSetBagItem = GameTooltip.SetBagItem
-    function GameTooltip.SetBagItem(self, container, slot)
-      if MerchantFrame and MerchantFrame:IsShown() then
-        local link = GetContainerItemLink(container, slot)
-        local itemID = link and ShaguTweaks.GetItemIDFromLink(link)
-        if itemID then API.RememberVendorPrice(itemID) end
-      end
-      return HookSetBagItem(self, container, slot)
-    end
+    ShaguTweaks.hooksecurefunc(GameTooltip, "SetBagItem", function(tooltip, container, slot)
+      if not MerchantFrame or not MerchantFrame:IsShown() then return end
 
-    local HookSetMerchantItem = GameTooltip.SetMerchantItem
-    function GameTooltip.SetMerchantItem(self, merchantIndex)
-      local link = GetMerchantItemLink(merchantIndex)
+      local link = GetContainerItemLink(container, slot)
       local itemID = link and ShaguTweaks.GetItemIDFromLink(link)
-      if itemID then API.RememberVendorPrice(itemID) end
-      return HookSetMerchantItem(self, merchantIndex)
-    end
+      if not itemID then return end
+
+      -- Prefer ClassicAPI whenever it has a direct item-record price.
+      if API.RememberVendorPrice(itemID) then return end
+
+      local _, count = GetContainerItemInfo(container, slot)
+      count = tonumber(count) or 1
+      if count < 1 then count = 1 end
+
+      local tooltipName = tooltip and tooltip:GetName()
+      local moneyFrame = tooltipName and _G[tooltipName .. "MoneyFrame1"]
+      local stackPrice = moneyFrame and moneyFrame:IsShown() and tonumber(moneyFrame.staticMoney)
+      if not stackPrice or stackPrice <= 0 then return end
+
+      local unitPrice = floor(stackPrice / count)
+      -- A vendor stack value must be an exact multiple of its per-item value.
+      -- Refuse ambiguous values rather than persist a potentially wrong price.
+      if unitPrice > 0 and unitPrice * count == stackPrice then
+        StoreVendorPrice(itemID, unitPrice)
+      end
+    end)
   end
 end
 
