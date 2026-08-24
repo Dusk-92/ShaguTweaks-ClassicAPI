@@ -50,6 +50,11 @@ ShaguTweaks:SetScript("OnEvent", function()
   -- initialize overwrites
   ShaguTweaks_config.overwrites = ShaguTweaks_config.overwrites or {}
 
+  -- finalize ClassicAPI-backed shared data after all addon files are loaded
+  if ShaguTweaks.API and ShaguTweaks.API.PrepareVendorValues then
+    ShaguTweaks.API.PrepareVendorValues()
+  end
+
   -- read all registered mods
   for title, mod in pairs(ShaguTweaks.mods) do
     -- write initial default config
@@ -131,10 +136,10 @@ SlashCmdList["STWEAKS"] = function(msg)
       stdout(string.format(text, index), 1, 1, 1, 1)
     elseif type(ShaguTweaks.overwrites[index]) ~= type(value) then
       local text = "|cffff5555Error:|r Overwrite |cffffcc00%s|r requires to be type: |cffffcc00%s|r"
-      stdout(string.format(text, index, type(ShaguTweaks.overwrites[index])), 1, 1, 1, 1)
+      stdout(string.format(text, index, type(ShaguTweaks.overwrites[index])), 1, .8, .8, 1)
     else
       ShaguTweaks_config.overwrites[index] = value
-      local text = "Overwrite |cffffcc00%s|r is now set to: |cffffcc00%s|r"
+      local text = "Overwrite |cffffcc00%s|r is now set to: |cffffcc00%s"
       stdout(string.format(text, index, input), 1, 1, 1, 1)
     end
   else
