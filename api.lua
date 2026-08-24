@@ -155,8 +155,9 @@ end
 
 -- Vendor Values keeps its original static database as an immediate fallback.
 -- Once all addon files are loaded, wrap that database so ClassicAPI's live
--- price wins whenever the client has the item record. Successful live reads
--- are cached in Lua for the rest of the session.
+-- price wins whenever the client has a positive sell price. Nil/zero is treated
+-- as unavailable here so the historical ShaguTweaks database can still provide
+-- an immediate value before ClassicAPI has learned the merchant price.
 API.PrepareVendorValues = function()
   if not API.itemprice or not ShaguTweaks.SellValueDB or ShaguTweaks.SellValueLegacyDB then
     return
@@ -172,7 +173,9 @@ API.PrepareVendorValues = function()
       end
 
       local price = API.GetItemSellPriceByID(itemID)
-      if price ~= nil then
+      if price and price > 0 then
+        -- Cache only confirmed positive live prices. Never cache nil/zero: a
+        -- later merchant/cache update may make the real price available.
         rawset(tab, itemID, price)
         return price
       end
