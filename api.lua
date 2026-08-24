@@ -9,6 +9,7 @@ local API = ShaguTweaks.API
 API.classicapi_version = tonumber(_G.CLASSIC_API_VERSION) or 0
 API.classicapi = type(_G.C_NamePlate) == "table"
   or type(_G.C_Spell) == "table"
+  or type(_G.C_UnitAuras) == "table"
   or type(_G.UnitGUID) == "function"
 
 API.nameplates = type(_G.C_NamePlate) == "table"
@@ -17,6 +18,10 @@ API.nameplates = type(_G.C_NamePlate) == "table"
 API.casts = type(_G.C_Spell) == "table"
   and type(_G.C_Spell.UnitCastingInfo) == "function"
   and type(_G.C_Spell.UnitChannelInfo) == "function"
+
+API.auras = type(_G.C_UnitAuras) == "table"
+  and type(_G.C_UnitAuras.GetAuraDataByIndex) == "function"
+  and type(_G.C_UnitAuras.GetDebuffDataByIndex) == "function"
 
 API.spellinfo = type(_G.GetSpellInfo) == "function"
 
@@ -33,6 +38,12 @@ API.playerstate = type(_G.IsMounted) == "function"
   and type(_G.CancelShapeshiftForm) == "function"
 
 API.unitguid = type(_G.UnitGUID) == "function"
+
+API.chatidentity = type(_G.GetCurrentChatGUID) == "function"
+  and type(_G.GetPlayerInfoByGUID) == "function"
+
+API.playercache = type(_G.C_PlayerCache) == "table"
+  and type(_G.C_PlayerCache.GetPlayerInfoByName) == "function"
 
 -- SuperWoW remains optional. It can still provide useful extra cast/GUID
 -- information, but ClassicAPI is the primary compatibility layer.
@@ -83,6 +94,38 @@ API.GetChannelInfo = function(unit)
 
   return name, "", displayName or "", texture, startTime, endTime,
     isTradeSkill, notInterruptible, spellID
+end
+
+API.GetAuraDataByIndex = function(unit, index, filter)
+  if API.auras then
+    return _G.C_UnitAuras.GetAuraDataByIndex(unit, index, filter)
+  end
+end
+
+API.GetDebuffDataByIndex = function(unit, index)
+  if API.auras then
+    return _G.C_UnitAuras.GetDebuffDataByIndex(unit, index)
+  end
+end
+
+API.GetCurrentChatGUID = function()
+  if API.chatidentity then
+    return _G.GetCurrentChatGUID()
+  end
+end
+
+API.GetPlayerInfoByGUID = function(guid)
+  if API.chatidentity and guid then
+    return _G.GetPlayerInfoByGUID(guid)
+  end
+end
+
+-- Read-only bridge to ClassicAPI's optional persistent player cache.
+-- ShaguTweaks never enables that cache or its visible-object scanner itself.
+API.GetCachedPlayerInfoByName = function(name)
+  if API.playercache and name then
+    return _G.C_PlayerCache.GetPlayerInfoByName(name)
+  end
 end
 
 API.GetSpellInfo = function(spell, bookType)
