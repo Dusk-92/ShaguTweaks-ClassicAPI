@@ -153,6 +153,38 @@ API.GetItemSellPriceByID = function(itemID)
   end
 end
 
+-- Vendor Values keeps its original static database as an immediate fallback.
+-- Once all addon files are loaded, wrap that database so ClassicAPI's live
+-- price wins whenever the client has the item record. Successful live reads
+-- are cached in Lua for the rest of the session.
+API.PrepareVendorValues = function()
+  if not API.itemprice or not ShaguTweaks.SellValueDB or ShaguTweaks.SellValueLegacyDB then
+    return
+  end
+
+  local legacy = ShaguTweaks.SellValueDB
+  local live = {}
+
+  setmetatable(live, {
+    __index = function(tab, itemID)
+      if type(itemID) ~= "number" then
+        return legacy[itemID]
+      end
+
+      local price = API.GetItemSellPriceByID(itemID)
+      if price ~= nil then
+        rawset(tab, itemID, price)
+        return price
+      end
+
+      return legacy[itemID]
+    end
+  })
+
+  ShaguTweaks.SellValueLegacyDB = legacy
+  ShaguTweaks.SellValueDB = live
+end
+
 API.GetNumJunkItems = function()
   if API.merchant then
     return _G.C_MerchantFrame.GetNumJunkItems()
