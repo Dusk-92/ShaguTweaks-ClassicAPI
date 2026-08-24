@@ -2,7 +2,7 @@
 ## Title: |cffffcc00Shagu|cffffffffTweaks
 ## Author: Shagu
 ## Notes: A collection of tweaks and enhancements to the Default UI
-## Notes-ruRU: Коллекция настроек и улучшений для стандартного пользовательского интерфейса.
+## Notes-ruRU: Коллекция настроек и улучшений стандартного пользовательского интерфейса.
 ## Version: GIT
 ## Dependencies: !!!ClassicAPI
 ## SavedVariablesPerCharacter: ShaguTweaks_config, ShaguTweaks_cache
@@ -61,6 +61,7 @@ mods\nameplate-scale.lua
 mods\sell-junk.lua
 mods\unitframes-classcolor.lua
 mods\vendor-values.lua
+mods\vendor-values-runtime.lua
 mods\worldmap-coordinates.lua
 mods\worldmap-window.lua
 mods\blue-shaman.lua
