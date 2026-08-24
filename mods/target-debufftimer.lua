@@ -1,5 +1,6 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
+local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["Debuff Timer"],
@@ -10,8 +11,30 @@ local module = ShaguTweaks:register({
 })
 
 local libdebuff = ShaguTweaks.libdebuff
-local UnitDebuff = libdebuff and libdebuff.UnitDebuff
 local TimeConvert = ShaguTweaks.TimeConvert
+
+local function GetTargetDebuff(index)
+  -- ClassicAPI exposes the real aura name, stack count, dispel type and,
+  -- when known by the client, the exact applied duration/expiration time.
+  -- Keep libdebuff as the compatibility fallback for older/non-API paths.
+  local aura = API and API.GetDebuffDataByIndex and API.GetDebuffDataByIndex("target", index)
+  if aura then
+    local duration = aura.duration and aura.duration > 0 and aura.duration or nil
+    local timeleft = -1
+    local dtype = aura.dispelName and aura.dispelName ~= "" and aura.dispelName or nil
+
+    if duration and aura.expirationTime and aura.expirationTime > 0 then
+      timeleft = aura.expirationTime - GetTime()
+      if timeleft < 0 then timeleft = 0 end
+    end
+
+    return aura.name, nil, aura.icon, aura.applications, dtype, duration, timeleft
+  end
+
+  if libdebuff and libdebuff.UnitDebuff then
+    return libdebuff:UnitDebuff("target", index)
+  end
+end
 
 local function CreateTextCooldown(cooldown)
   if cooldown.readable then return end
@@ -49,7 +72,7 @@ module.enable = function(self)
     HookTargetDebuffButton_Update()
 
     for i=1, MAX_TARGET_DEBUFFS do
-      local effect, rank, texture, stacks, dtype, duration, timeleft = libdebuff:UnitDebuff("target", i)
+      local effect, rank, texture, stacks, dtype, duration, timeleft = GetTargetDebuff(i)
       local button = _G["TargetFrameDebuff"..i]
 
       if button and not button.cd then
@@ -80,7 +103,7 @@ module.enable = function(self)
         dBorder:SetVertexColor(color.r, color.g, color.b)
       end
 
-      if button and effect and duration and timeleft then
+      if button and effect and duration and timeleft and timeleft >= 0 then
         local start = GetTime() + timeleft - duration
         CreateTextCooldown(button.cd)
         CooldownFrame_SetTimer(button.cd, start, duration, 1)
@@ -90,6 +113,7 @@ module.enable = function(self)
         button.cd:Show()
       elseif button then
         CooldownFrame_SetTimer(button.cd,0,0,0)
+        if button.cd.readable then button.cd.readable:Hide() end
       end
     end
   end
