@@ -31,6 +31,7 @@ API.aurapositional = type(_G.C_UnitAuras) == "table"
 
 API.spellinfo = type(_G.GetSpellInfo) == "function"
 API.actioninfo = type(_G.GetActionInfo) == "function"
+API.macrospell = type(_G.GetMacroSpell) == "function"
 
 API.inventory = type(_G.C_Container) == "table"
   and type(_G.C_Container.GetContainerNumFreeSlots) == "function"
@@ -131,6 +132,12 @@ end
 API.GetActionInfo = function(slot)
   if API.actioninfo then
     return _G.GetActionInfo(slot)
+  end
+end
+
+API.GetMacroSpell = function(slot)
+  if API.macrospell then
+    return _G.GetMacroSpell(slot)
   end
 end
 
