@@ -15,8 +15,7 @@ module.enable = function(self)
   if ShaguPlates then return end
 
   local colorsByName = {}
-  local useClassicTokens = API and API.eventutils and API.GetNamePlateForUnit
-    and _G.C_EventUtils
+  local useClassicTokens = API and API.eventutils and _G.C_EventUtils
     and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
     and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_REMOVED")
 
@@ -28,46 +27,32 @@ module.enable = function(self)
       local unit = arg1
       if not unit then return end
 
-      local plate = API.GetNamePlateForUnit(unit)
-      if event == "NAME_PLATE_UNIT_ADDED" then
-        if not plate then return end
+      -- Use only the exact nameplateN unit token here. Do not request or
+      -- decorate ClassicAPI's Lua frame wrapper: the legacy libnameplate
+      -- discovery path is deliberately kept isolated after native crashes.
+      local name = UnitName(unit)
+      if not name then return end
 
+      if event == "NAME_PLATE_UNIT_ADDED" then
         local color
         if UnitIsPlayer(unit) then
           local _, class = UnitClass(unit)
           color = class and RAID_CLASS_COLORS[class] or nil
         end
-
-        -- Cache the exact unit result once. The native nameplate may repaint
-        -- its reaction color later, so the lightweight OnUpdate below only
-        -- reapplies this cached color and performs no unit/name scan.
-        plate.stClassColor = color or false
-        plate.stClassUnit = unit
-
-        local name = UnitName(unit)
-        if name then colorsByName[name] = color or false end
+        colorsByName[name] = color or false
       elseif event == "NAME_PLATE_UNIT_REMOVED" then
-        -- ClassicAPI keeps the token resolvable during REMOVED. Clear fields
-        -- before the native frame can be recycled for another unit.
-        if plate and plate.stClassUnit == unit then
-          plate.stClassColor = nil
-          plate.stClassUnit = nil
-        end
+        colorsByName[name] = nil
       end
     end)
   end
 
   table.insert(ShaguTweaks.libnameplate.OnUpdate, function()
     if useClassicTokens then
-      local color = this.stClassColor
-
-      -- The ClassicAPI wrapper returned by GetNamePlateForUnit normally is
-      -- the same Lua frame. Keep a name-keyed cache as a harmless fallback
-      -- for wrapper recreation without falling back to active unit scanning.
-      if color == nil and this.name then
-        color = colorsByName[this.name:GetText()]
-      end
-
+      -- libnameplate owns the real native frame. The token listener above only
+      -- caches exact class information, so this hot path is just one name read
+      -- and one table lookup with no TargetByName scan and no C frame wrapper.
+      local name = this.name and this.name:GetText()
+      local color = name and colorsByName[name]
       if color then
         this.healthbar:SetStatusBarColor(color.r, color.g, color.b, 1)
       end
