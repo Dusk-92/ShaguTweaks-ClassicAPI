@@ -40,14 +40,25 @@ libpredict:SetScript("OnEvent", function()
   end
 end)
 
-libpredict:SetScript("OnUpdate", function()
-  -- update on timeout events
-  for timestamp, targets in pairs(events) do
-    if GetTime() >= timestamp then
+local function UpdateTimeouts()
+  local now = GetTime()
+  local pending
+
+  for timestamp in pairs(events) do
+    if now >= timestamp then
       events[timestamp] = nil
+    else
+      pending = true
     end
   end
-end)
+
+  -- No prediction timeout is pending: completely remove OnUpdate until the
+  -- next AddEvent() instead of waking this library on every rendered frame.
+  if not pending then
+    libpredict.timeoutActive = nil
+    libpredict:SetScript("OnUpdate", nil)
+  end
+end
 
 function libpredict:ParseComm(sender, msg)
   local msgtype, target, heal, time
@@ -147,6 +158,11 @@ end
 function libpredict:AddEvent(time, target)
   events[time] = events[time] or {}
   table.insert(events[time], target)
+
+  if not self.timeoutActive then
+    self.timeoutActive = true
+    self:SetScript("OnUpdate", UpdateTimeouts)
+  end
 end
 
 function libpredict:Heal(sender, target, amount, duration)
