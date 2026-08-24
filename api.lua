@@ -23,6 +23,9 @@ API.auras = type(_G.C_UnitAuras) == "table"
   and type(_G.C_UnitAuras.GetAuraDataByIndex) == "function"
   and type(_G.C_UnitAuras.GetDebuffDataByIndex) == "function"
 
+API.aurapositional = type(_G.C_UnitAuras) == "table"
+  and type(_G.C_UnitAuras.UnitDebuff) == "function"
+
 API.spellinfo = type(_G.GetSpellInfo) == "function"
 
 API.inventory = type(_G.C_Container) == "table"
@@ -123,6 +126,14 @@ end
 API.GetDebuffDataByIndex = function(unit, index)
   if API.auras then
     return _G.C_UnitAuras.GetDebuffDataByIndex(unit, index)
+  end
+end
+
+-- ClassicAPI's positional UnitDebuff mirrors the Classic-Era 15-value shape
+-- without allocating an AuraData table. Prefer it in hot UI refresh paths.
+API.UnitDebuff = function(unit, index, filter)
+  if API.aurapositional then
+    return _G.C_UnitAuras.UnitDebuff(unit, index, filter)
   end
 end
 
