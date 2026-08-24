@@ -308,10 +308,14 @@ module.enable = function(self)
     -- When a world-unit mouseover ends, the GameTooltip can still contain that
     -- unit's GUID for this event. If that unit is also selected as target, the
     -- GUID resolver would otherwise remap the stale tooltip to "target" and
-    -- GameTooltip:Show() would keep it stuck on screen.
+    -- GameTooltip:Show() would keep it stuck on screen. Match Turtle's native
+    -- tooltip lifetime here: let it fade out, and reset identity on OnHide.
     if not UnitExists("mouseover") and tooltip_from_mouseover then
-      ResetTooltipIdentity()
-      GameTooltip:Hide()
+      if SHOW_NEWBIE_TIPS == "1" then
+        GameTooltip:Hide()
+      else
+        GameTooltip:FadeOut()
+      end
       return
     end
 
