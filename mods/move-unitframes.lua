@@ -1,5 +1,6 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
+local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["Movable Unit Frames"],
@@ -61,8 +62,22 @@ module.enable = function(self)
     line:SetPoint('BOTTOMRIGHT', unlocker.grid, 'TOPRIGHT', 0, -(i*hStep + size/2))
   end
 
+  local function IsControlDown()
+    -- ClassicAPI updates its left/right modifier bitmap before firing
+    -- MODIFIER_STATE_CHANGED. Vanilla's merged key state can still be stale
+    -- inside that callback, exactly like the Shift case fixed in Equip Compare.
+    if type(_G.IsLeftControlKeyDown) == "function" and
+      type(_G.IsRightControlKeyDown) == "function" then
+      return (_G.IsLeftControlKeyDown() or _G.IsRightControlKeyDown()) and true or false
+    end
+
+    return IsControlKeyDown() and true or false
+  end
+
   local function UpdateMovableState()
-    local shouldMove = IsShiftKeyDown() and IsControlKeyDown()
+    local shiftDown = API and API.IsShiftKeyDown and API.IsShiftKeyDown()
+      or (IsShiftKeyDown() and true or false)
+    local shouldMove = shiftDown and IsControlDown()
 
     if shouldMove and not unlocker.movable then
       for _, frame in pairs(movables) do
