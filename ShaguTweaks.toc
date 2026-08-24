@@ -5,7 +5,7 @@
 ## Notes-ruRU: Коллекция настроек и улучшений для стандартного пользовательского интерфейса.
 ## Version: GIT
 ## Dependencies: !!!ClassicAPI
-## SavedVariablesPerCharacter: ShaguTweaks_config, ShaguTweaks_cache
+## SavedVariablesPerCharacter: ShaguTweaks_config, ShaguTweaks_cache, ShaguTweaks_vendor_prices
 
 # locales
 locales\locales_deDE.lua
@@ -38,6 +38,7 @@ libs\libspell.lua
 libs\libcast.lua
 libs\libdebuff.lua
 libs\libunitscan.lua
+libs\libvendorcache.lua
 libs\libhealth.lua
 libs\libnameplate.lua
 libs\libpredict.lua
