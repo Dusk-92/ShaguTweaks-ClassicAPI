@@ -258,35 +258,55 @@ module.enable = function(self)
         frame:ShaguTweaksBaseAddMessage(text, a1, a2, a3, a4, a5)
       end
 
-      -- Item link tooltip on mouseover
-      _G["ChatFrame"..i]:SetScript("OnHyperlinkEnter", function()
+      local chatFrame = _G["ChatFrame"..i]
+      local baseHyperlinkEnter = chatFrame:GetScript("OnHyperlinkEnter")
+      local baseHyperlinkLeave = chatFrame:GetScript("OnHyperlinkLeave")
+      local baseHyperlinkClick = chatFrame:GetScript("OnHyperlinkClick")
+
+      -- Add the item-link preview without discarding Turtle or addon handlers.
+      chatFrame:SetScript("OnHyperlinkEnter", function()
         local _, _, linktype = string.find(arg1, "^(.-):(.+)$")
         if linktype == "item" then
+          this.ShaguTweaksItemTooltip = true
           GameTooltip:SetOwner(this, "ANCHOR_CURSOR")
           GameTooltip:SetHyperlink(arg1)
           GameTooltip:Show()
+        elseif baseHyperlinkEnter then
+          baseHyperlinkEnter()
         end
       end)
-      _G["ChatFrame"..i]:SetScript("OnHyperlinkLeave", function()
-        GameTooltip:Hide()
+
+      chatFrame:SetScript("OnHyperlinkLeave", function()
+        if this.ShaguTweaksItemTooltip then
+          this.ShaguTweaksItemTooltip = nil
+          GameTooltip:Hide()
+        elseif baseHyperlinkLeave then
+          baseHyperlinkLeave()
+        end
       end)
 
-      -- Alt/Ctrl-click player names; URL copy
-      _G["ChatFrame"..i]:SetScript("OnHyperlinkClick", function()
+      -- Handle only ShaguTweaks-specific actions, otherwise preserve the
+      -- chat frame's existing hyperlink behavior.
+      chatFrame:SetScript("OnHyperlinkClick", function()
         local _, _, playerLink = string.find(arg1, "(player:.+)")
         if playerLink then
           local _, pname = strsplit(":", playerLink)
           if API.IsAltKeyDown and API.IsAltKeyDown() then
             InviteByName(pname)
+            return
           elseif API.IsControlKeyDown and API.IsControlKeyDown() then
             TargetByName(pname, true)
-          else
-            ChatFrame_OnHyperlinkShow(arg1, arg2, arg3)
+            return
           end
         elseif strsub(arg1,1,3) == "url" then
           if string.len(arg1) > 4 and string.sub(arg1,1,4) == "url:" then
             CopyLinkDialog.CopyText(string.sub(arg1, 5))
           end
+          return
+        end
+
+        if baseHyperlinkClick then
+          baseHyperlinkClick()
         else
           ChatFrame_OnHyperlinkShow(arg1, arg2, arg3)
         end
