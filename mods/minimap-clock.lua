@@ -32,8 +32,14 @@ module.enable = function(self)
   MinimapClock.text:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
   MinimapClock.text:SetAllPoints(MinimapClock)
   MinimapClock.text:SetFontObject(GameFontWhite)
+  MinimapClock.text:SetText(date("%H:%M"))
+  MinimapClock.elapsed = 0
   MinimapClock:SetScript("OnUpdate", function()
-    if ( this.tick or 1) > GetTime() then return else this.tick = GetTime() + 1 end
+    -- OnUpdate already gives us elapsed time. The clock only needs a 1 Hz
+    -- refresh, so avoid calling GetTime() on every rendered frame.
+    this.elapsed = (this.elapsed or 0) + arg1
+    if this.elapsed < 1 then return end
+    this.elapsed = 0
     this.text:SetText(date("%H:%M"))
   end)
 
