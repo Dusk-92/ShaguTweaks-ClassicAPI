@@ -263,6 +263,13 @@ libunitscan:SetScript("OnEvent", function()
       AddData("mobs", name, class, level, elite)
     end
   end
+
+  -- Active legacy scans sleep while the player has a target. Wake the scanner
+  -- only when that target disappears and queued work is actually waiting.
+  if event == "PLAYER_TARGET_CHANGED" and next(queue) and
+    not UnitExists("target") and not UnitName("target") then
+    libunitscan:Show()
+  end
 end)
 
 -- since TargetByName can only be triggered within vanilla,
@@ -273,8 +280,13 @@ if GetExpansion() == "vanilla" then
   local SoundOff = function() return end
 
   libunitscan:SetScript("OnUpdate", function()
-    -- don't scan when another unit is in target
-    if UnitExists("target") or UnitName("target") then return end
+    -- A queued legacy scan cannot do useful work while the player already has
+    -- a target. Hide completely instead of polling this condition every frame;
+    -- PLAYER_TARGET_CHANGED above wakes us when the target is cleared.
+    if UnitExists("target") or UnitName("target") then
+      this:Hide()
+      return
+    end
 
     local name = next(queue)
     if name then
