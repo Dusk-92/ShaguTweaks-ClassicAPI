@@ -1,6 +1,7 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
 local L = ShaguTweaks.L
+local API = ShaguTweaks.API or {}
 local gfind = string.gmatch or string.gfind
 local GetUnitData = ShaguTweaks.GetUnitData
 local GetExpansion = ShaguTweaks.GetExpansion
@@ -127,25 +128,9 @@ end
 -- ============================================================
 module.enable = function(self)
 
-  -- --------------------------------------------------------
-  -- Blue Shaman class colors (vanilla only)
-  -- --------------------------------------------------------
-  if GetExpansion() == "vanilla" then
-    RAID_CLASS_COLORS = {
-      ["WARRIOR"] = { r = 0.78, g = 0.61, b = 0.43, colorStr = "ffc79c6e" },
-      ["MAGE"]    = { r = 0.41, g = 0.8,  b = 0.94, colorStr = "ff69ccf0" },
-      ["ROGUE"]   = { r = 1,    g = 0.96, b = 0.41, colorStr = "fffff569" },
-      ["DRUID"]   = { r = 1,    g = 0.49, b = 0.04, colorStr = "ffff7d0a" },
-      ["HUNTER"]  = { r = 0.67, g = 0.83, b = 0.45, colorStr = "ffabd473" },
-      ["SHAMAN"]  = { r = 0.14, g = 0.35, b = 1.0,  colorStr = "ff2459ff" },
-      ["PRIEST"]  = { r = 1,    g = 1,    b = 1,    colorStr = "ffffffff" },
-      ["WARLOCK"] = { r = 0.58, g = 0.51, b = 0.79, colorStr = "ff9482c9" },
-      ["PALADIN"] = { r = 0.96, g = 0.55, b = 0.73, colorStr = "fff58cba" },
-    }
-    RAID_CLASS_COLORS = setmetatable(RAID_CLASS_COLORS, { __index = function(tab,key)
-      return { r = 0.6, g = 0.6, b = 0.6, colorStr = "ff999999" }
-    end})
-  end
+  -- Turtle/Octo/Raven already provide the intended class-color table,
+  -- including blue shamans. Do not replace RAID_CLASS_COLORS here: keeping
+  -- the server UI table intact also preserves references held by other addons.
 
   -- --------------------------------------------------------
   -- Sticky channels & arrow-up repeat
@@ -161,10 +146,10 @@ module.enable = function(self)
   -- --------------------------------------------------------
   local function ChatOnMouseWheel()
     if arg1 > 0 then
-      if IsShiftKeyDown() then this:ScrollToTop()
+      if API.IsShiftKeyDown and API.IsShiftKeyDown() then this:ScrollToTop()
       else for i=1,scrollspeed do this:ScrollUp() end end
     elseif arg1 < 0 then
-      if IsShiftKeyDown() then this:ScrollToBottom()
+      if API.IsShiftKeyDown and API.IsShiftKeyDown() then this:ScrollToBottom()
       else for i=1,scrollspeed do this:ScrollDown() end end
     end
     if this:AtBottom() then
@@ -359,7 +344,7 @@ module.enable = function(self)
         local n, _ = strsplit(":", name)
         n = gsub(n, "([^%s]*)%s+([^%s]*)%s+([^%s]*)", "%3")
         n = gsub(n, "([^%s]*)%s+([^%s]*)", "%2")
-        if IsShiftKeyDown() and ChatFrameEditBox:IsVisible() then
+        if API.IsShiftKeyDown and API.IsShiftKeyDown() and ChatFrameEditBox:IsVisible() then
           ChatFrameEditBox:Insert("|cffffffff|Hplayer:"..n.."|h["..n.."]|h|r")
           return
         end
