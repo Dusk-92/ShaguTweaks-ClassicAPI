@@ -75,21 +75,36 @@ module.enable = function(self)
     UpdatePortraits(PartyMemberFrame4)
   end)
 
-  -- Target-of-target has no reliable vanilla portrait event. The old module
-  -- refreshed it every rendered frame. ClassicAPI gives us UnitGUID, so poll
-  -- cheaply at 5 Hz and only redraw when the actual unit changes.
-  local tot = CreateFrame("Frame", nil, TargetFrame)
-  tot.elapsed = 0
-  tot.lastguid = nil
-  tot:SetScript("OnUpdate", function()
-    this.elapsed = this.elapsed + arg1
-    if this.elapsed < .2 then return end
-    this.elapsed = 0
+  -- Turtle/Vanilla already runs TargetofTarget_OnUpdate for the target-of-target
+  -- frame. Reuse that existing update path instead of adding a second poller.
+  -- Keep a GUID cache when ClassicAPI is available so two units with the same
+  -- display name are still detected as different units.
+  local lasttotguid = nil
+  if type(TargetofTarget_OnUpdate) == "function" then
+    local originalTargetofTargetOnUpdate = TargetofTarget_OnUpdate
+    TargetofTarget_OnUpdate = function(elapsed)
+      originalTargetofTargetOnUpdate(elapsed)
 
-    local guid = API.UnitGUID and API.UnitGUID("targettarget") or UnitName("targettarget")
-    if guid ~= this.lastguid then
-      this.lastguid = guid
-      UpdatePortraits(TargetofTargetFrame)
+      local guid = API.UnitGUID and API.UnitGUID("targettarget") or UnitName("targettarget")
+      if guid ~= lasttotguid then
+        lasttotguid = guid
+        UpdatePortraits(TargetofTargetFrame)
+      end
     end
-  end)
+  else
+    -- Compatibility fallback for clients that do not expose the stock handler.
+    local tot = CreateFrame("Frame", nil, TargetFrame)
+    tot.elapsed = 0
+    tot:SetScript("OnUpdate", function()
+      this.elapsed = this.elapsed + arg1
+      if this.elapsed < .2 then return end
+      this.elapsed = 0
+
+      local guid = API.UnitGUID and API.UnitGUID("targettarget") or UnitName("targettarget")
+      if guid ~= lasttotguid then
+        lasttotguid = guid
+        UpdatePortraits(TargetofTargetFrame)
+      end
+    end)
+  end
 end
