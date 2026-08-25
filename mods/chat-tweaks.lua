@@ -262,8 +262,9 @@ module.enable = function(self)
         end
       end)
 
-      -- Keep all Chat Tweaks hyperlink actions local to the chat frame so the
-      -- global SetItemRef function remains untouched for Turtle and addons.
+      -- Keep Chat Tweaks-specific actions local to the chat frame. All other
+      -- hyperlinks, including Turtle quest links, stay owned by the native
+      -- handler so their full tooltip data and difficulty colors are preserved.
       chatFrame:SetScript("OnHyperlinkClick", function()
         local _, _, playerLink = string.find(arg1, "(player:.+)")
         if playerLink then
@@ -278,20 +279,6 @@ module.enable = function(self)
             ChatFrameEditBox:Insert("|cffffffff|Hplayer:"..pname.."|h["..pname.."]|h|r")
             return
           end
-        elseif strsub(arg1,1,5) == "quest" and not (ShaguQuest or pfQuest or Questie or QuestieOcto) then
-          local _, _, quest_id = string.find(arg1, "^quest:(%d+):")
-          if quest_id then
-            local _, _, quest_title = string.find(arg2 or "", ".*|h%[(.*)%]|h.*")
-            if quest_title then
-              HideUIPanel(ItemRefTooltip)
-              ShowUIPanel(ItemRefTooltip)
-              ItemRefTooltip:SetOwner(UIParent, "ANCHOR_PRESERVE")
-              ItemRefTooltip:AddLine(quest_title, 1,1,0)
-              ItemRefTooltip:AddDoubleLine("Quest ID", quest_id, .6,.6,.6, 1,1,1)
-              ItemRefTooltip:Show()
-            end
-          end
-          return
         elseif strsub(arg1,1,3) == "url" then
           if string.len(arg1) > 4 and string.sub(arg1,1,4) == "url:" then
             CopyLinkDialog.CopyText(string.sub(arg1, 5))
