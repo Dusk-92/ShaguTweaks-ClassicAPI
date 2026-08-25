@@ -18,59 +18,14 @@ local module = ShaguTweaks:register({
   enabled = true,
 })
 
-local function ChatTweaksOwnsSocialColors()
-  local configured = ShaguTweaks_config and ShaguTweaks_config[T["Chat Tweaks"]]
-  if configured ~= nil then return configured == 1 end
-
-  -- On a fresh install config defaults are initialized while modules are
-  -- enabled, so fall back to the registered module default when needed.
-  local chat = ShaguTweaks.mods and ShaguTweaks.mods[T["Chat Tweaks"]]
-  return chat and chat.enabled or false
-end
-
 local function GetPlayerDB()
   ShaguTweaks_cache = ShaguTweaks_cache or {}
   ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
   return ShaguTweaks_cache["players"]
 end
 
-local function CacheVisibleOnlineFriends(playerdb)
-  if GetNumFriends() == 0 then return end
-
-  local off = FauxScrollFrame_GetOffset(FriendsFrameFriendsScrollFrame)
-  for i=1, FRIENDS_TO_DISPLAY do
-    local name, level, class, _, connected = GetFriendInfo(off + i)
-    if not name or name == _G.UNKNOWN then break end
-
-    if connected then
-      local classToken = class and class ~= _G.UNKNOWN and L["class"][class] or GetUnitData(name)
-      local ccolor = classToken and RAID_CLASS_COLORS[classToken]
-      local lcolor = GetDifficultyColor(tonumber(level))
-
-      if ccolor and lcolor then
-        playerdb[name] = playerdb[name] or {}
-        playerdb[name].lastseen = date("%a %d-%b-%Y")
-        playerdb[name].cname = rgbhex(ccolor) .. name .. "|r"
-        playerdb[name].clevel = rgbhex(lcolor) .. level .. "|r"
-        playerdb[name].cclass = ccolor
-      end
-    end
-  end
-end
-
 module.enable = function(self)
   local playerdb = GetPlayerDB()
-
-  -- Chat Tweaks contains the same social-color rendering hooks in this fork.
-  -- When it owns the UI, keep Social Colors limited to a tiny local cache hook
-  -- so friends retain their known class color while offline. This does not
-  -- issue /who requests, add timers, or perform any extra server query.
-  if ChatTweaksOwnsSocialColors() then
-    hooksecurefunc("FriendsList_Update", function()
-      CacheVisibleOnlineFriends(playerdb)
-    end)
-    return
-  end
 
 do -- add class colors to chat
     for i=1,NUM_CHAT_WINDOWS do
@@ -78,11 +33,6 @@ do -- add class colors to chat
       if chatFrame and not chatFrame.HookAddMessageColor and not Prat then
         chatFrame.HookAddMessageColor = chatFrame.AddMessage
         chatFrame.AddMessage = function(frame, text, a1, a2, a3, a4, a5)
-          if frame.ShaguTweaksChatTweaksHooked then
-            frame.HookAddMessageColor(frame, text, a1, a2, a3, a4, a5)
-            return
-          end
-
           if text then
             for name in gfind(text, "|Hplayer:(.-)|h") do
               local real = strsplit(":", name)
