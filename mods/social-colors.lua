@@ -36,13 +36,15 @@ do -- add class colors to chat
           if text then
             for name in gfind(text, "|Hplayer:(.-)|h") do
               local real = strsplit(":", name)
+              local color = "|cffaaaaaa"
               local class = GetUnitData(real)
-              if class and class ~= UNKNOWN then
-                local color = rgbhex(RAID_CLASS_COLORS[class])
-                text = string.gsub(text,
-                  "|Hplayer:"..name.."|h%["..real.."%]|h(.-:-)",
-                  "|r["..color.."|Hplayer:"..name.."|h"..color..real.."|h|r]|r%1")
+              local classColor = class and class ~= UNKNOWN and RAID_CLASS_COLORS[class]
+              if classColor then
+                color = rgbhex(classColor)
               end
+              text = string.gsub(text,
+                "|Hplayer:"..name.."|h%["..real.."%]|h(.-:-)",
+                "|r["..color.."|Hplayer:"..name.."|h"..color..real.."|h|r]|r%1")
             end
           end
           frame.HookAddMessageColor(frame, text, a1, a2, a3, a4, a5)
