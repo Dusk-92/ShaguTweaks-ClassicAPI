@@ -121,29 +121,31 @@ local function QueryCast(unit)
 end
 
 local function UpdatePosition()
-  castbar:ClearAllPoints()
-  castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -4)
-
   local targetOfTarget = TargetofTargetFrame and TargetofTargetFrame:IsShown()
   local debuff11 = TargetFrameDebuff11 and TargetFrameDebuff11:IsShown()
   local debuff7 = TargetFrameDebuff7 and TargetFrameDebuff7:IsShown()
   local buff1 = TargetFrameBuff1 and TargetFrameBuff1:IsShown()
 
+  local y = -4
   if targetOfTarget then
-    castbar:ClearAllPoints()
-    castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -24)
+    y = -24
     if debuff11 then
-      castbar:ClearAllPoints()
-      castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -45)
+      y = -45
       if buff1 then
-        castbar:ClearAllPoints()
-        castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -65)
+        y = -65
       end
     end
   elseif debuff7 then
-    castbar:ClearAllPoints()
-    castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, -24)
+    y = -24
   end
+
+  -- Buff/debuff rows usually remain unchanged for the whole cast. Keep checking
+  -- their cheap visibility state while animating, but only touch the frame
+  -- anchors when the required position actually changes.
+  if castbar.positionY == y then return end
+  castbar.positionY = y
+  castbar:ClearAllPoints()
+  castbar:SetPoint("BOTTOM", TargetFrame, "BOTTOM", -12, y)
 end
 
 local function HideCast()
@@ -186,7 +188,6 @@ local function UpdateProgress()
   castbar.spark:SetPoint("CENTER", castbar, "LEFT", x, 0)
 
   -- The target frame can move its buff/debuff rows while a cast is active.
-  -- Repositioning the visible bar is cheap and keeps it attached correctly.
   UpdatePosition()
 end
 
