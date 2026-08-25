@@ -48,6 +48,10 @@ module.enable = function(self)
   end)
 
   table.insert(ShaguTweaks.libnameplate.OnUpdate, function()
-    this.new:SetAlpha(this:GetAlpha())
+    local alpha = this:GetAlpha()
+    if this.new.ShaguTweaksAlpha ~= alpha then
+      this.new.ShaguTweaksAlpha = alpha
+      this.new:SetAlpha(alpha)
+    end
   end)
 end
