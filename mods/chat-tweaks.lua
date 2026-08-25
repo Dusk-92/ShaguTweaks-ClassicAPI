@@ -285,8 +285,8 @@ module.enable = function(self)
         end
       end)
 
-      -- Handle only ShaguTweaks-specific actions, otherwise preserve the
-      -- chat frame's existing hyperlink behavior.
+      -- Keep all Chat Tweaks hyperlink actions local to the chat frame so the
+      -- global SetItemRef function remains untouched for Turtle and addons.
       chatFrame:SetScript("OnHyperlinkClick", function()
         local _, _, playerLink = string.find(arg1, "(player:.+)")
         if playerLink then
@@ -297,7 +297,24 @@ module.enable = function(self)
           elseif API.IsControlKeyDown and API.IsControlKeyDown() then
             TargetByName(pname, true)
             return
+          elseif API.IsShiftKeyDown and API.IsShiftKeyDown() and ChatFrameEditBox:IsVisible() then
+            ChatFrameEditBox:Insert("|cffffffff|Hplayer:"..pname.."|h["..pname.."]|h|r")
+            return
           end
+        elseif strsub(arg1,1,5) == "quest" and not (ShaguQuest or pfQuest or Questie) then
+          local _, _, quest_id = string.find(arg1, "^quest:(%d+):")
+          if quest_id then
+            local _, _, quest_title = string.find(arg2 or "", ".*|h%[(.*)%]|h.*")
+            if quest_title then
+              HideUIPanel(ItemRefTooltip)
+              ShowUIPanel(ItemRefTooltip)
+              ItemRefTooltip:SetOwner(UIParent, "ANCHOR_PRESERVE")
+              ItemRefTooltip:AddLine(quest_title, 1,1,0)
+              ItemRefTooltip:AddDoubleLine("Quest ID", quest_id, .6,.6,.6, 1,1,1)
+              ItemRefTooltip:Show()
+            end
+          end
+          return
         elseif strsub(arg1,1,3) == "url" then
           if string.len(arg1) > 4 and string.sub(arg1,1,4) == "url:" then
             CopyLinkDialog.CopyText(string.sub(arg1, 5))
@@ -332,46 +349,6 @@ module.enable = function(self)
   _G.CHAT_YELL_GET                = left.."Y"..right   .. default
   _G.CHAT_WHISPER_GET             = "[From]"           .. default
   _G.CHAT_WHISPER_INFORM_GET      = "[To]"             .. default
-
-  -- --------------------------------------------------------
-  -- SetItemRef hook for URL/quest/player links
-  -- --------------------------------------------------------
-  local HookSetItemRef = SetItemRef
-  function _G.SetItemRef(link, text, button)
-    if (strsub(link,1,3) == "url") then
-      if string.len(link) > 4 and string.sub(link,1,4) == "url:" then
-        CopyLinkDialog.CopyText(string.sub(link, 5))
-      end
-      return
-    end
-    local questlink, _, quest_id = string.find(link, "quest:(%d+):.*")
-    local playerlink = strsub(link,1,6) == "player"
-    if ShaguQuest or pfQuest or Questie then questlink = nil end
-    if questlink then
-      local _, _, quest_title = string.find(text, ".*|h%[(.*)%]|h.*")
-      if quest_title then
-        HideUIPanel(ItemRefTooltip)
-        ShowUIPanel(ItemRefTooltip)
-        ItemRefTooltip:SetOwner(UIParent, "ANCHOR_PRESERVE")
-        ItemRefTooltip:AddLine(quest_title, 1,1,0)
-        ItemRefTooltip:AddDoubleLine("Quest ID", quest_id, .6,.6,.6, 1,1,1)
-        ItemRefTooltip:Show()
-      end
-      return
-    elseif playerlink then
-      local name = strsub(link, 8)
-      if name and strlen(name) > 0 then
-        local n, _ = strsplit(":", name)
-        n = gsub(n, "([^%s]*)%s+([^%s]*)%s+([^%s]*)", "%3")
-        n = gsub(n, "([^%s]*)%s+([^%s]*)", "%2")
-        if API.IsShiftKeyDown and API.IsShiftKeyDown() and ChatFrameEditBox:IsVisible() then
-          ChatFrameEditBox:Insert("|cffffffff|Hplayer:"..n.."|h["..n.."]|h|r")
-          return
-        end
-      end
-    end
-    HookSetItemRef(link, text, button)
-  end
 
   -- --------------------------------------------------------
   -- Right-click ignore
