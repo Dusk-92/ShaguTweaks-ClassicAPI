@@ -110,7 +110,11 @@ module.enable = function(self)
 
     local paperdoll = CreateFrame("Frame", nil, CharacterFrame)
     paperdoll:RegisterEvent("UNIT_INVENTORY_CHANGED")
-    paperdoll:SetScript("OnEvent", refresh_paperdoll)
+    paperdoll:SetScript("OnEvent", function()
+      if not arg1 or arg1 == "player" then
+        refresh_paperdoll()
+      end
+    end)
     paperdoll:SetScript("OnShow", refresh_paperdoll)
   end
 
@@ -159,25 +163,30 @@ module.enable = function(self)
       end
     end
 
-    local refresh_bags = function()
+    local refresh_bags = function(bagID)
+      bagID = bagID and tonumber(bagID) or nil
+
       for i = 1, 12 do
         local frame = _G["ContainerFrame"..i]
-        if frame then
-          local name = frame:GetName()
+        if frame and frame:IsShown() then
           local id = frame:GetID()
-          for i = 1, MAX_CONTAINER_ITEMS do
-            local button = _G[name.."Item"..i]
+          if not bagID or id == bagID then
+            local name = frame:GetName()
+            for k = 1, MAX_CONTAINER_ITEMS do
+              local button = _G[name.."Item"..k]
+              if button and button:IsShown() then
+                if not defcolor["bag"] then
+                  defcolor["bag"] = { button.ShaguTweaks_border:GetBackdropBorderColor() }
+                end
 
-            if not defcolor["bag"] then
-              defcolor["bag"] = { button.ShaguTweaks_border:GetBackdropBorderColor() }
-            end
+                button.ShaguTweaks_border:SetBackdropBorderColor(defcolor["bag"][1], defcolor["bag"][2], defcolor["bag"][3], 1)
 
-            button.ShaguTweaks_border:SetBackdropBorderColor(defcolor["bag"][1], defcolor["bag"][2], defcolor["bag"][3], 1)
-
-            local quality = GetBagItemQuality(id, button:GetID())
-            if button and button:IsShown() and quality ~= nil then
-              local r, g, b = GetItemQualityColor(quality)
-              button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
+                local quality = GetBagItemQuality(id, button:GetID())
+                if quality ~= nil then
+                  local r, g, b = GetItemQualityColor(quality)
+                  button.ShaguTweaks_border:SetBackdropBorderColor(r,g,b)
+                end
+              end
             end
           end
         end
@@ -186,13 +195,15 @@ module.enable = function(self)
 
     local bags = CreateFrame("Frame", nil, ContainerFrame1)
     bags:RegisterEvent("BAG_UPDATE")
-    bags:SetScript("OnEvent", refresh_bags)
+    bags:SetScript("OnEvent", function()
+      refresh_bags(arg1)
+    end)
 
     local HookContainerFrame_OnShow = ContainerFrame_OnShow
-    function ContainerFrame_OnShow() refresh_bags() HookContainerFrame_OnShow() end
-
-    local HookContainerFrame_OnHide = ContainerFrame_OnHide
-    function ContainerFrame_OnHide() refresh_bags() HookContainerFrame_OnHide() end
+    function ContainerFrame_OnShow()
+      HookContainerFrame_OnShow()
+      refresh_bags(this and this:GetID())
+    end
   end
 
   do -- bank
@@ -229,23 +240,28 @@ module.enable = function(self)
     AddBorder(TempEnchant1, 3, {.2,.2,.2})
     AddBorder(TempEnchant2, 3, {.2,.2,.2})
 
-    local hookBuffFrame_Enchant_OnUpdate = BuffFrame_Enchant_OnUpdate
-    function BuffFrame_Enchant_OnUpdate(elapsed)
-      hookBuffFrame_Enchant_OnUpdate(elapsed)
+    -- Item quality only changes when equipment changes. Keep the enchant frames'
+    -- native OnUpdate untouched and refresh our border colors on inventory events
+    -- instead of resolving both weapon qualities on every rendered frame.
+    TempEnchant1Border:SetAlpha(0)
+    TempEnchant2Border:SetAlpha(0)
 
-      -- return early without any weapon enchants
-      local mh, _, _, oh = GetWeaponEnchantInfo()
-      if not mh and not oh then return end
-
-      -- update weapon enchant 1
-      local r, g, b = GetItemQualityColor(GetInventoryItemQuality("player", TempEnchant1:GetID()) or 1)
+    local function refresh_weapon_borders()
+      local r, g, b = GetItemQualityColor(GetUnitItemQuality("player", TempEnchant1:GetID()) or 1)
       TempEnchant1.ShaguTweaks_border:SetBackdropBorderColor(r,g,b,1)
-      TempEnchant1Border:SetAlpha(0)
 
-      -- update weapon enchant 2
-      local r, g, b = GetItemQualityColor(GetInventoryItemQuality("player", TempEnchant2:GetID()) or 1)
+      local r, g, b = GetItemQualityColor(GetUnitItemQuality("player", TempEnchant2:GetID()) or 1)
       TempEnchant2.ShaguTweaks_border:SetBackdropBorderColor(r,g,b,1)
-      TempEnchant2Border:SetAlpha(0)
     end
+
+    local weapon = CreateFrame("Frame")
+    weapon:RegisterEvent("UNIT_INVENTORY_CHANGED")
+    weapon:SetScript("OnEvent", function()
+      if not arg1 or arg1 == "player" then
+        refresh_weapon_borders()
+      end
+    end)
+
+    refresh_weapon_borders()
   end
 end
