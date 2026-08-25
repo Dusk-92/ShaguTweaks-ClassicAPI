@@ -146,6 +146,9 @@ local passiveChatEvents = {
   ["CHAT_MSG_WHISPER"] = true,
 }
 
+local useNameplateUnitEvents = API and API.eventutils and _G.C_EventUtils
+  and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
+
 libunitscan:RegisterEvent("PLAYER_ENTERING_WORLD")
 libunitscan:RegisterEvent("FRIENDLIST_UPDATE")
 libunitscan:RegisterEvent("GUILD_ROSTER_UPDATE")
@@ -153,8 +156,10 @@ libunitscan:RegisterEvent("RAID_ROSTER_UPDATE")
 libunitscan:RegisterEvent("PARTY_MEMBERS_CHANGED")
 libunitscan:RegisterEvent("PLAYER_TARGET_CHANGED")
 libunitscan:RegisterEvent("WHO_LIST_UPDATE")
-libunitscan:RegisterEvent("CHAT_MSG_SYSTEM")
 libunitscan:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+if useNameplateUnitEvents then
+  libunitscan:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+end
 for chatEvent in pairs(passiveChatEvents) do
   libunitscan:RegisterEvent(chatEvent)
 end
@@ -175,6 +180,20 @@ libunitscan:SetScript("OnEvent", function()
     local level = UnitLevel("player")
     local guid = API and API.UnitGUID and API.UnitGUID("player")
     AddData("players", name, class, level, nil, guid)
+
+  elseif event == "NAME_PLATE_UNIT_ADDED" then
+    -- ClassicAPI exposes an exact nameplateN unit token here. Cache players
+    -- passively while they are already visible in the world; this improves
+    -- Social Colors/Chat Levels coverage without /who, TargetByName or frame
+    -- wrappers, and deliberately does not use NAME_PLATE_CREATED.
+    local unit = arg1
+    if unit and UnitIsPlayer(unit) then
+      local name = UnitName(unit)
+      local _, class = UnitClass(unit)
+      local level = UnitLevel(unit)
+      local guid = API and API.UnitGUID and API.UnitGUID(unit)
+      AddData("players", name, class, level, nil, guid)
+    end
 
   elseif passiveChatEvents[event] then
     -- Passive cache only: remember speakers already delivered by the client.
@@ -219,7 +238,7 @@ libunitscan:SetScript("OnEvent", function()
       AddData("players", name, class, level, nil, guid)
     end
 
-  elseif event == "WHO_LIST_UPDATE" or event == "CHAT_MSG_SYSTEM" then
+  elseif event == "WHO_LIST_UPDATE" then
     local name, class, level, _
     for i = 1, GetNumWhoResults() do
       name, _, level, _, class, _ = GetWhoInfo(i)
