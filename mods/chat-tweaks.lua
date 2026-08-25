@@ -276,9 +276,9 @@ module.enable = function(self)
         local _, _, playerLink = string.find(arg1, "(player:.+)")
         if playerLink then
           local _, pname = strsplit(":", playerLink)
-          if IsAltKeyDown() then
+          if API.IsAltKeyDown and API.IsAltKeyDown() then
             InviteByName(pname)
-          elseif IsControlKeyDown() then
+          elseif API.IsControlKeyDown and API.IsControlKeyDown() then
             TargetByName(pname, true)
           else
             ChatFrame_OnHyperlinkShow(arg1, arg2, arg3)
