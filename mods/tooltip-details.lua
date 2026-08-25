@@ -305,17 +305,10 @@ module.enable = function(self)
   statusbar = CreateFrame("Frame", nil, GameTooltipStatusBar)
   statusbar:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
   statusbar:SetScript("OnEvent", function()
-    -- When a world-unit mouseover ends, the GameTooltip can still contain that
-    -- unit's GUID for this event. If that unit is also selected as target, the
-    -- GUID resolver would otherwise remap the stale tooltip to "target" and
-    -- GameTooltip:Show() would keep it stuck on screen. Match Turtle's native
-    -- tooltip lifetime here: let it fade out, and reset identity on OnHide.
+    -- Do not force Hide/FadeOut here. Turtle/Vanilla owns the tooltip lifetime
+    -- and applies its native delay + fade when the cursor leaves a world unit.
+    -- We only avoid re-showing the stale tooltip through the selected target.
     if not UnitExists("mouseover") and tooltip_from_mouseover then
-      if SHOW_NEWBIE_TIPS == "1" then
-        GameTooltip:Hide()
-      else
-        GameTooltip:FadeOut()
-      end
       return
     end
 
