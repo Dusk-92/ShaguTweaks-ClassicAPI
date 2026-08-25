@@ -74,11 +74,12 @@ module.enable = function(self)
 
 do -- add class colors to chat
     for i=1,NUM_CHAT_WINDOWS do
-      if _G["ChatFrame"..i] and not _G["ChatFrame"..i].HookAddMessageColor and not Prat then
-        _G["ChatFrame"..i].HookAddMessageColor = _G["ChatFrame"..i].AddMessage
-        _G["ChatFrame"..i].AddMessage = function(frame, text, a1, a2, a3, a4, a5)
+      local chatFrame = _G["ChatFrame"..i]
+      if chatFrame and not chatFrame.HookAddMessageColor and not Prat then
+        chatFrame.HookAddMessageColor = chatFrame.AddMessage
+        chatFrame.AddMessage = function(frame, text, a1, a2, a3, a4, a5)
           if frame.ShaguTweaksChatTweaksHooked then
-            _G["ChatFrame"..i].HookAddMessageColor(frame, text, a1, a2, a3, a4, a5)
+            frame.HookAddMessageColor(frame, text, a1, a2, a3, a4, a5)
             return
           end
 
@@ -94,7 +95,7 @@ do -- add class colors to chat
               end
             end
           end
-          _G["ChatFrame"..i].HookAddMessageColor(frame, text, a1, a2, a3, a4, a5)
+          frame.HookAddMessageColor(frame, text, a1, a2, a3, a4, a5)
         end
       end
     end
