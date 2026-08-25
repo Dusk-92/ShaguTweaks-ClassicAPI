@@ -9,6 +9,34 @@ local PASSIVE_CACHE_TTL = 90 * 24 * 60 * 60
 
 local libunitscan = CreateFrame("Frame", "ShaguTweaksUnitScan", UIParent)
 
+-- Chat history can be restored before PLAYER_ENTERING_WORLD. Bind the saved
+-- player database lazily whenever unit data is queried so Social Colors can use
+-- classes learned before a /reload. Merge any transient entries collected before
+-- SavedVariables became available instead of discarding them.
+local function EnsurePlayerCache()
+  ShaguTweaks_cache = ShaguTweaks_cache or {}
+  ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
+
+  if units.players ~= ShaguTweaks_cache["players"] then
+    local transient = units.players
+    units.players = ShaguTweaks_cache["players"]
+
+    for name, data in pairs(transient) do
+      if not units.players[name] then
+        units.players[name] = data
+      elseif data then
+        for key, value in pairs(data) do
+          if units.players[name][key] == nil then
+            units.players[name][key] = value
+          end
+        end
+      end
+    end
+  end
+
+  return units.players
+end
+
 local function EnrichPlayerFromClassicAPI(name)
   if not name or not API or not API.GetCachedPlayerInfoByName then return end
 
@@ -51,6 +79,8 @@ end
 function ShaguTweaks.GetUnitData(name, active)
   if not name then return end
 
+  EnsurePlayerCache()
+
   if not units["players"][name] then
     EnrichPlayerFromClassicAPI(name)
     if not units["players"][name] then
@@ -90,9 +120,7 @@ end
 local function RememberPlayer(name)
   if not name or name == "" or name == _G.UNKNOWN then return end
 
-  ShaguTweaks_cache = ShaguTweaks_cache or {}
-  ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
-  units.players = ShaguTweaks_cache["players"]
+  EnsurePlayerCache()
 
   -- ClassicAPI exposes the GUID of the CHAT_MSG_* sender synchronously.
   -- Resolve class from the engine's existing name cache only: this is a pure
@@ -166,10 +194,9 @@ end
 
 libunitscan:SetScript("OnEvent", function()
   if event == "PLAYER_ENTERING_WORLD" then
-    -- load database
-    ShaguTweaks_cache = ShaguTweaks_cache or {}
-    ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
-    units.players = ShaguTweaks_cache["players"]
+    -- Ensure the saved database is already bound even if another module queried
+    -- it earlier while restoring UI state.
+    EnsurePlayerCache()
 
     -- One cheap cleanup pass at login. Known classes are kept forever.
     PrunePassivePlayers()
