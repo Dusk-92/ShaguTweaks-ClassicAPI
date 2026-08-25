@@ -278,7 +278,7 @@ module.enable = function(self)
             ChatFrameEditBox:Insert("|cffffffff|Hplayer:"..pname.."|h["..pname.."]|h|r")
             return
           end
-        elseif strsub(arg1,1,5) == "quest" and not (ShaguQuest or pfQuest or Questie) then
+        elseif strsub(arg1,1,5) == "quest" and not (ShaguQuest or pfQuest or Questie or QuestieOcto) then
           local _, _, quest_id = string.find(arg1, "^quest:(%d+):")
           if quest_id then
             local _, _, quest_title = string.find(arg2 or "", ".*|h%[(.*)%]|h.*")
