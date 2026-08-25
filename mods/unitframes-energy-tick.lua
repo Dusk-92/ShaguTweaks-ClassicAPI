@@ -57,25 +57,28 @@ module.enable = function(self)
     end
   end)
 
-local pheight, pwidth = PlayerFrameManaBar:GetHeight(), PlayerFrameManaBar:GetWidth()
-energytick:SetScript("OnUpdate", function()
-  if this.target then
-    this.start, this.max = GetTime(), this.target
-    this.target = nil
-  end
+  local pheight, pwidth = PlayerFrameManaBar:GetHeight(), PlayerFrameManaBar:GetWidth()
+  energytick:SetScript("OnUpdate", function()
+    if this.target then
+      this.max = this.target
+      this.current = 0
+      this.target = nil
+    end
 
-  if not this.start then return end
+    if not this.max then return end
 
-  this.current = GetTime() - this.start
+    -- OnUpdate already provides the exact elapsed frame time. Accumulating arg1
+    -- keeps the spark just as smooth without querying GetTime() every frame.
+    this.current = (this.current or 0) + arg1
 
-  if this.current > this.max then
-    this.start, this.max, this.current = GetTime(), 2, 0
-  end
+    if this.current > this.max then
+      this.max, this.current = 2, 0
+    end
 
-  local pos = (pwidth ~= "-1" and pwidth or width) * (this.current / this.max)
-  if not pheight then return end
-  this.spark:SetPoint("LEFT", pos-((pheight+5)/2), 0)
-end)
+    local pos = (pwidth ~= "-1" and pwidth or width) * (this.current / this.max)
+    if not pheight then return end
+    this.spark:SetPoint("LEFT", pos-((pheight+5)/2), 0)
+  end)
 
   energytick.spark = energytick:CreateTexture(nil, 'OVERLAY')
   energytick.spark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
