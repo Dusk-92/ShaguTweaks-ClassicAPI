@@ -7,7 +7,6 @@ local hooksecurefunc = ShaguTweaks.hooksecurefunc
 local GetExpansion = ShaguTweaks.GetExpansion
 local cmatch = ShaguTweaks.cmatch
 local rgbhex = ShaguTweaks.rgbhex
-local strsplit = ShaguTweaks.strsplit
 local friendinfo = gsub(gsub(FRIENDS_LEVEL_TEMPLATE,"%%s","%%s %%s"),"%%d","%%s")
 
 local module = ShaguTweaks:register({
@@ -39,16 +38,33 @@ local function SocialColorsEnabled()
   return module.enabled and true or false
 end
 
+local classHex = {}
+
+local function GetPlayerNameFromLink(payload)
+  local colon = string.find(payload, ":")
+  if colon then
+    return string.sub(payload, 1, colon - 1)
+  end
+  return payload
+end
+
 local function ColorPlayerLinks(text)
   if not text then return text end
 
   for name in gfind(text, "|Hplayer:(.-)|h") do
-    local real = strsplit(":", name)
+    -- Player hyperlinks may contain Turtle metadata after the real name. Avoid
+    -- the generic strsplit helper here: this hot path only needs the first field
+    -- and therefore does not need a temporary table or gsub callback.
+    local real = GetPlayerNameFromLink(name)
     local color = "|cffaaaaaa"
     local class = GetUnitData(real)
     local classColor = class and class ~= UNKNOWN and RAID_CLASS_COLORS[class]
     if classColor then
-      color = rgbhex(classColor)
+      color = classHex[class]
+      if not color then
+        color = rgbhex(classColor)
+        classHex[class] = color
+      end
     end
 
     text = string.gsub(text,
