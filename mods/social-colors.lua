@@ -24,34 +24,68 @@ local function GetPlayerDB()
   return ShaguTweaks_cache["players"]
 end
 
-module.enable = function(self)
-  local playerdb = GetPlayerDB()
+-- Chat Tweaks restores persisted chat during module enable. Module enable order
+-- is intentionally not guaranteed, so install the lightweight AddMessage hook
+-- while files are loaded and decide dynamically whether Social Colors is active.
+-- This makes restored history use the same formatter as live chat regardless of
+-- which module happens to enable first.
+local function SocialColorsEnabled()
+  if Prat then return false end
 
-do -- add class colors to chat
-    for i=1,NUM_CHAT_WINDOWS do
-      local chatFrame = _G["ChatFrame"..i]
-      if chatFrame and not chatFrame.HookAddMessageColor and not Prat then
-        chatFrame.HookAddMessageColor = chatFrame.AddMessage
-        chatFrame.AddMessage = function(frame, text, a1, a2, a3, a4, a5)
-          if text then
-            for name in gfind(text, "|Hplayer:(.-)|h") do
-              local real = strsplit(":", name)
-              local color = "|cffaaaaaa"
-              local class = GetUnitData(real)
-              local classColor = class and class ~= UNKNOWN and RAID_CLASS_COLORS[class]
-              if classColor then
-                color = rgbhex(classColor)
-              end
-              text = string.gsub(text,
-                "|Hplayer:"..name.."|h%["..real.."%]|h(.-:-)",
-                "|r["..color.."|Hplayer:"..name.."|h"..color..real.."|h|r]|r%1")
-            end
-          end
-          frame.HookAddMessageColor(frame, text, a1, a2, a3, a4, a5)
+  if ShaguTweaks_config and ShaguTweaks_config[module.title] ~= nil then
+    return ShaguTweaks_config[module.title] == 1
+  end
+
+  return module.enabled and true or false
+end
+
+local function ColorPlayerLinks(text)
+  if not text then return text end
+
+  for name in gfind(text, "|Hplayer:(.-)|h") do
+    local real = strsplit(":", name)
+    local color = "|cffaaaaaa"
+    local class = GetUnitData(real)
+    local classColor = class and class ~= UNKNOWN and RAID_CLASS_COLORS[class]
+    if classColor then
+      color = rgbhex(classColor)
+    end
+
+    text = string.gsub(text,
+      "|Hplayer:"..name.."|h%["..real.."%]|h(.-:-)",
+      "|r["..color.."|Hplayer:"..name.."|h"..color..real.."|h|r]|r%1")
+  end
+
+  return text
+end
+
+ShaguTweaks.ColorPlayerLinks = ColorPlayerLinks
+
+local function HookChatColors()
+  for i=1,NUM_CHAT_WINDOWS do
+    local chatFrame = _G["ChatFrame"..i]
+    if chatFrame and not chatFrame.HookAddMessageColor and not Prat then
+      chatFrame.HookAddMessageColor = chatFrame.AddMessage
+      chatFrame.AddMessage = function(frame, text, a1, a2, a3, a4, a5)
+        if text and SocialColorsEnabled() then
+          text = ColorPlayerLinks(text)
         end
+        frame.HookAddMessageColor(frame, text, a1, a2, a3, a4, a5)
       end
     end
   end
+end
+
+-- Install before VARIABLES_LOADED/module enable so Chat Tweaks history restore
+-- cannot bypass Social Colors just because of pairs() iteration order.
+HookChatColors()
+
+module.enable = function(self)
+  local playerdb = GetPlayerDB()
+
+  -- Defensive second call for chat frames created/replaced by another addon
+  -- between file load and VARIABLES_LOADED. Existing hooks are never duplicated.
+  HookChatColors()
 
   local socialmod = CreateFrame("Frame", "ShaguTweaksSocialMod", UIParent)
   socialmod:RegisterEvent("CHAT_MSG_SYSTEM")
