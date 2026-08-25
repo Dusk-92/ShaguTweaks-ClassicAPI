@@ -1,5 +1,6 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local L = ShaguTweaks.L
+local API = ShaguTweaks.API
 local GetExpansion = ShaguTweaks.GetExpansion
 local libtipscan = ShaguTweaks.libtipscan
 local libspell = ShaguTweaks.libspell
@@ -243,12 +244,24 @@ end)
 function libdebuff:UnitDebuff(unit, id)
   local unitname = UnitName(unit)
   local unitlevel = UnitLevel(unit)
-  local texture, stacks, dtype = UnitDebuff(unit, id)
+  local effect, texture, stacks, dtype
   local duration, timeleft = nil, -1
   local rank = nil -- no backport
-  local effect
 
-  if texture then
+  -- ClassicAPI already exposes the aura name together with the positional
+  -- debuff data. Prefer it here so UNIT_AURA refreshes don't need to build and
+  -- scan up to 16 hidden tooltips just to recover each effect name.
+  if API and API.aurapositional and API.UnitDebuff then
+    effect, texture, stacks, dtype = API.UnitDebuff(unit, id)
+  end
+
+  -- Plain Vanilla / older ClassicAPI compatibility. Also acts as a defensive
+  -- fallback if a positional API unexpectedly failed to resolve a visible aura.
+  if not texture then
+    texture, stacks, dtype = UnitDebuff(unit, id)
+  end
+
+  if texture and (not effect or effect == "") then
     scanner:SetUnitDebuff(unit, id)
     effect = scanner:Line(1) or ""
   end
