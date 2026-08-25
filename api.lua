@@ -51,6 +51,10 @@ API.eventutils = type(_G.C_EventUtils) == "table"
   and type(_G.C_EventUtils.IsEventValid) == "function"
 API.modifierkeys = type(_G.IsLeftShiftKeyDown) == "function"
   and type(_G.IsRightShiftKeyDown) == "function"
+  and type(_G.IsLeftControlKeyDown) == "function"
+  and type(_G.IsRightControlKeyDown) == "function"
+  and type(_G.IsLeftAltKeyDown) == "function"
+  and type(_G.IsRightAltKeyDown) == "function"
 API.modifierstate = API.eventutils and API.modifierkeys
   and _G.C_EventUtils.IsEventValid("MODIFIER_STATE_CHANGED")
 
@@ -188,8 +192,8 @@ API.GetContainerNumFreeSlots = function(bag)
 end
 
 -- ClassicAPI updates its own left/right modifier bitmap before firing
--- MODIFIER_STATE_CHANGED. Prefer that state over vanilla IsShiftKeyDown(),
--- whose merged Win32 key state can still be stale inside the event callback.
+-- MODIFIER_STATE_CHANGED. Prefer that state over vanilla's merged Win32 key
+-- state when the richer ClassicAPI functions are available.
 API.IsShiftKeyDown = function()
   if API.modifierkeys then
     return (_G.IsLeftShiftKeyDown() or _G.IsRightShiftKeyDown()) and true or false
@@ -197,6 +201,30 @@ API.IsShiftKeyDown = function()
 
   if type(_G.IsShiftKeyDown) == "function" then
     return _G.IsShiftKeyDown() and true or false
+  end
+
+  return false
+end
+
+API.IsControlKeyDown = function()
+  if API.modifierkeys then
+    return (_G.IsLeftControlKeyDown() or _G.IsRightControlKeyDown()) and true or false
+  end
+
+  if type(_G.IsControlKeyDown) == "function" then
+    return _G.IsControlKeyDown() and true or false
+  end
+
+  return false
+end
+
+API.IsAltKeyDown = function()
+  if API.modifierkeys then
+    return (_G.IsLeftAltKeyDown() or _G.IsRightAltKeyDown()) and true or false
+  end
+
+  if type(_G.IsAltKeyDown) == "function" then
+    return _G.IsAltKeyDown() and true or false
   end
 
   return false
