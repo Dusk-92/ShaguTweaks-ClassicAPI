@@ -12,7 +12,7 @@ local module = ShaguTweaks:register({
 -- how long (in seconds) a given message text stays "known" and gets suppressed on repeat
 local COOLDOWN = 70
 
--- how often (in seconds) the message cache gets pruned of stale entries
+-- how often (in seconds) stale entries may be pruned when chat traffic arrives
 local CLEAN_INTERVAL = 30
 
 -- double-buffered cache of [frame] = {message = last_seen_time}, keyed per
@@ -20,6 +20,7 @@ local CLEAN_INTERVAL = 30
 -- get treated as a duplicate when it also needs to show in another tab
 -- (e.g. a custom "World" tab)
 local cache = { {}, {}, INDEX = 1 }
+local last_cleanup = 0
 
 local function IsGuildMate(name)
   if not name or not IsInGuild() then return false end
@@ -43,12 +44,34 @@ local function IsFriendOf(name)
   return false
 end
 
+local function PruneCache(now)
+  if now - last_cleanup < CLEAN_INTERVAL then return end
+  last_cleanup = now
+
+  local index = cache.INDEX
+  local newindex = (index == 1) and 2 or 1
+  cache[newindex] = {}
+
+  for frame, frameCache in pairs(cache[index]) do
+    for msg, seen_at in pairs(frameCache) do
+      if (seen_at + COOLDOWN) > now then
+        cache[newindex][frame] = cache[newindex][frame] or {}
+        cache[newindex][frame][msg] = seen_at
+      end
+    end
+  end
+
+  cache[index] = {}
+  cache.INDEX = newindex
+end
+
 -- returns true (and records the message) if this exact text was already seen
 -- on this specific chat frame within the cooldown window
 local function IsDuplicate(frame, msg)
-  local time = GetTime()
-  local index = cache.INDEX
+  local now = GetTime()
+  PruneCache(now)
 
+  local index = cache.INDEX
   local frameCache = cache[index][frame]
   if not frameCache then
     frameCache = {}
@@ -56,11 +79,11 @@ local function IsDuplicate(frame, msg)
   end
 
   local seen_at = frameCache[msg]
-  if seen_at and (seen_at + COOLDOWN) > time then
+  if seen_at and (seen_at + COOLDOWN) > now then
     return true
   end
 
-  frameCache[msg] = time
+  frameCache[msg] = now
   return false
 end
 
@@ -75,31 +98,6 @@ module.enable = function(self)
   if IsInGuild() then
     GuildRoster()
   end
-
-  -- periodically swap/prune the cache so it never grows forever
-  local cleaner = CreateFrame("Frame")
-  local elapsed_total = 0
-  cleaner:SetScript("OnUpdate", function()
-    elapsed_total = elapsed_total + arg1
-    if elapsed_total < CLEAN_INTERVAL then return end
-    elapsed_total = 0
-
-    local time = GetTime()
-    local index = cache.INDEX
-    local newindex = (index == 1) and 2 or 1
-
-    for frame, frameCache in pairs(cache[index]) do
-      for msg, seen_at in pairs(frameCache) do
-        if (seen_at + COOLDOWN) > time then
-          cache[newindex][frame] = cache[newindex][frame] or {}
-          cache[newindex][frame][msg] = seen_at
-        end
-      end
-    end
-
-    cache[index] = {}
-    cache.INDEX = newindex
-  end)
 
   local Original_ChatFrame_OnEvent = ChatFrame_OnEvent
 
