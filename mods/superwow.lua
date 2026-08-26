@@ -21,50 +21,61 @@ local module = ShaguTweaks:register({
 module.enable = function(self)
   local libcast = ShaguTweaks.libcast
 
+  local function ClearCast(cast)
+    cast.cast = nil
+    cast.rank = nil
+    cast.start = nil
+    cast.casttime = nil
+    cast.icon = nil
+    cast.channel = nil
+    cast.spellID = nil
+  end
+
   local unitcast = CreateFrame("Frame")
   unitcast:RegisterEvent("UNIT_CASTEVENT")
   unitcast:SetScript("OnEvent", function()
-    if arg3 == "START" or arg3 == "CAST" or arg3 == "CHANNEL" then
+    local guid = arg1
+    local event_type = arg3
+    local spellID = arg4
+
+    if not guid then return end
+
+    if event_type == "START" or event_type == "CAST" or event_type == "CHANNEL" then
       -- human readable argument list
-      local guid = arg1
-      local target = arg2
-      local event_type = arg3
-      local spell_id = arg4
       local timer = arg5
-      local start = GetTime()
 
       -- get spell info from spell id
       local spell, icon, _
-      if SpellInfo and SpellInfo(spell_id) then
-        spell, _, icon = SpellInfo(spell_id)
-      end
+      spell, _, icon = SpellInfo(spellID)
 
       -- set fallback values
       spell = spell or UNKNOWN
       icon = icon or "Interface\\Icons\\INV_Misc_QuestionMark"
 
       -- add cast action to the database
-      if not libcast.db[guid] then libcast.db[guid] = {} end
-      libcast.db[guid].cast = spell
-      libcast.db[guid].rank = nil
-      libcast.db[guid].start = GetTime()
-      libcast.db[guid].casttime = timer
-      libcast.db[guid].icon = icon
-      libcast.db[guid].channel = event_type == "CHANNEL" or false
+      local cast = libcast.db[guid]
+      if not cast then
+        cast = {}
+        libcast.db[guid] = cast
+      end
+
+      cast.cast = spell
+      cast.rank = nil
+      cast.start = GetTime()
+      cast.casttime = timer
+      cast.icon = icon
+      cast.channel = event_type == "CHANNEL" or false
+      cast.spellID = spellID
 
       -- write state variable
       ShaguTweaks.superwow_active = true
-    elseif arg3 == "FAIL" then
-      local guid = arg1
+    elseif event_type == "FAIL" then
+      local cast = libcast.db[guid]
 
-      -- delete all cast entries of guid
-      if libcast.db[guid] then
-        libcast.db[guid].cast = nil
-        libcast.db[guid].rank = nil
-        libcast.db[guid].start = nil
-        libcast.db[guid].casttime = nil
-        libcast.db[guid].icon = nil
-        libcast.db[guid].channel = nil
+      -- Ignore a delayed FAIL for an older spell. Otherwise it can erase a
+      -- newer cast from the same GUID that already replaced it in the cache.
+      if cast and cast.spellID == spellID then
+        ClearCast(cast)
       end
     end
   end)
