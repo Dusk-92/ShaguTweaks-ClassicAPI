@@ -1,6 +1,5 @@
-local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
-local strsplit = ShaguTweaks.strsplit
+local cmatch = ShaguTweaks.cmatch
 
 local module = ShaguTweaks:register({
   title = T["Auto Stance"],
@@ -11,12 +10,22 @@ local module = ShaguTweaks:register({
 
 module.enable = function(self)
   local stancedance = CreateFrame("Frame", "ShaguTweaksStancedance")
-  stancedance.scanString = string.gsub(SPELL_FAILED_ONLY_SHAPESHIFT, "%%s", "(.+)")
   stancedance:RegisterEvent("UI_ERROR_MESSAGE")
   stancedance:SetScript("OnEvent", function()
-    for stances in string.gfind(arg1, stancedance.scanString) do
-      for _, stance in pairs({ strsplit(",", stances)}) do
-        CastSpellByName(string.gsub(stance,"^%s*(.-)%s*$", "%1"))
+    if not arg1 then return end
+
+    -- Parse the localized Blizzard format through ShaguTweaks' sanitized
+    -- formatter instead of building a raw Lua pattern from the locale string.
+    local stances = cmatch(arg1, SPELL_FAILED_ONLY_SHAPESHIFT)
+    if not stances then return end
+
+    -- The client can return several acceptable forms separated by commas.
+    -- Iterate them directly instead of allocating the strsplit result and a
+    -- second temporary table for every unrelated UI error message.
+    for stance in string.gfind(stances, "[^,]+") do
+      stance = string.gsub(stance, "^%s*(.-)%s*$", "%1")
+      if stance ~= "" then
+        CastSpellByName(stance)
       end
     end
   end)
