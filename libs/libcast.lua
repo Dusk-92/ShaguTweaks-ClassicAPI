@@ -100,9 +100,10 @@ end
 function libcast:AddAction(mob, spell, channel)
   if not mob or not spell then return nil end
 
-  if L["spells"][spell] ~= nil then
-    local casttime = L["spells"][spell].t
-    local icon = L["spells"][spell].icon and string.format("%s%s", "Interface\\Icons\\", L["spells"][spell].icon) or nil
+  local data = L["spells"][spell]
+  if data and data.t then
+    local casttime = data.t
+    local icon = data.icon and string.format("%s%s", "Interface\\Icons\\", data.icon) or nil
 
     -- add cast action to the database
     if not self.db[mob] then self.db[mob] = {} end
@@ -129,7 +130,10 @@ function libcast:RemoveAction(mob, spell)
     self.db[mob].casttime = nil
     self.db[mob].icon = nil
     self.db[mob].channel = nil
+    return true
   end
+
+  return nil
 end
 
 -- main data
@@ -281,17 +285,18 @@ libcast.customcast[strlower(aimedshot)] = function(begin, duration)
     local duration = duration or 3000
 
     for i=1,32 do
-      if UnitBuff("player", i) == "Interface\\Icons\\Racial_Troll_Berserk" then
+      local buff = UnitBuff("player", i)
+      if buff == "Interface\\Icons\\Racial_Troll_Berserk" then
         local berserk = 0.3
         if((UnitHealth("player")/UnitHealthMax("player")) >= 0.40) then
           berserk = (1.30 - (UnitHealth("player") / UnitHealthMax("player"))) / 3
         end
         duration = duration / (1 + berserk)
-      elseif UnitBuff("player", i) == "Interface\\Icons\\Ability_Hunter_RunningShot" then
+      elseif buff == "Interface\\Icons\\Ability_Hunter_RunningShot" then
         duration = duration / 1.4
-      elseif UnitBuff("player", i) == "Interface\\Icons\\Ability_Warrior_InnerRage" then
+      elseif buff == "Interface\\Icons\\Ability_Warrior_InnerRage" then
         duration = duration / 1.3
-      elseif UnitBuff("player", i) == "Interface\\Icons\\Inv_Trinket_Naxxramas04" then
+      elseif buff == "Interface\\Icons\\Inv_Trinket_Naxxramas04" then
         duration = duration / 1.2
       end
     end
@@ -322,17 +327,18 @@ libcast.customcast[strlower(multishot)] = function(begin, duration)
     local duration = duration or 500
 
     for i=1,32 do
-      if UnitBuff("player", i) == "Interface\\Icons\\Racial_Troll_Berserk" then
+      local buff = UnitBuff("player", i)
+      if buff == "Interface\\Icons\\Racial_Troll_Berserk" then
         local berserk = 0.3
         if((UnitHealth("player")/UnitHealthMax("player")) >= 0.40) then
           berserk = (1.30 - (UnitHealth("player") / UnitHealthMax("player"))) / 3
         end
         duration = duration / (1 + berserk)
-      elseif UnitBuff("player", i) == "Interface\\Icons\\Ability_Hunter_RunningShot" then
+      elseif buff == "Interface\\Icons\\Ability_Hunter_RunningShot" then
         duration = duration / 1.4
-      elseif UnitBuff("player", i) == "Interface\\Icons\\Ability_Warrior_InnerRage" then
+      elseif buff == "Interface\\Icons\\Ability_Warrior_InnerRage" then
         duration = duration / 1.3
-      elseif UnitBuff("player", i) == "Interface\\Icons\\Inv_Trinket_Naxxramas04" then
+      elseif buff == "Interface\\Icons\\Inv_Trinket_Naxxramas04" then
         duration = duration / 1.2
       end
     end
@@ -358,14 +364,21 @@ libcast.customcast[strlower(multishot)] = function(begin, duration)
   end
 end
 
-local function CastCustom(spell)
+local function GetCustomCast(spell)
   if not spell then return end
-  if not ShaguTweaks.UnitCastingInfo(UnitName("player")) then
-    for custom, func in pairs(libcast.customcast) do
-      if strfind(strlower(spell), custom) or strlower(spell) == custom then
-        func(true)
-      end
+
+  local lowerSpell = strlower(spell)
+  for custom, func in pairs(libcast.customcast) do
+    if strfind(lowerSpell, custom) then
+      return func
     end
+  end
+end
+
+local function CastCustom(spell)
+  local func = GetCustomCast(spell)
+  if func and not ShaguTweaks.UnitCastingInfo(player) then
+    func(true)
   end
 end
 
@@ -386,10 +399,17 @@ end)
 hooksecurefunc("CastSpellByName", function(spell, target)
   _, lastrank = libspell.GetSpellInfo(spell)
 
+  -- Only Aimed Shot and Multi-Shot need this legacy action scan. Avoid walking
+  -- all 120 action slots for every ordinary CastSpellByName macro invocation.
+  local custom = GetCustomCast(spell)
+  if not custom then return end
+
   for i=1,120 do
     -- detect if any cast is ongoing
     if IsCurrentAction(i) then
-      CastCustom(spell)
+      if not ShaguTweaks.UnitCastingInfo(player) then
+        custom(true)
+      end
       return
     end
   end
