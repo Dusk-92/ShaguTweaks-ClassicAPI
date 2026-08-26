@@ -2,7 +2,6 @@ local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
 local hooksecurefunc = hooksecurefunc or ShaguTweaks.hooksecurefunc
 local GetExpansion = ShaguTweaks.GetExpansion
-local AddBorder = ShaguTweaks.AddBorder
 local TimeConvert = ShaguTweaks.TimeConvert
 
 local module = ShaguTweaks:register({
@@ -13,6 +12,11 @@ local module = ShaguTweaks:register({
   enabled = true,
   color = { r = .3, g = .3, b = .3, a = .9}
 })
+
+-- GetTime() wraps after 2^32 milliseconds on affected clients. Cooldown start
+-- values keep that wrapped clock representation, so normalize negative deltas
+-- by one complete clock cycle.
+local TIMER_WRAP_SECONDS = (2 ^ 32) / 1000
 
 local function CooldownOnUpdate()
   -- hide frames without parent
@@ -31,36 +35,29 @@ local function CooldownOnUpdate()
   local now = GetTime()
 
   -- fix own alpha value (should be inherited, but somehow isn't always)
-  this:SetAlpha(parent:GetAlpha())
+  local alpha = parent:GetAlpha()
+  if this:GetAlpha() ~= alpha then
+    this:SetAlpha(alpha)
+  end
 
-  if this.start < now then
-    -- calculating remaining time as it should be
-    local remaining = this.duration - (now - this.start)
-    if remaining > 0 then
-      this.text:SetText(TimeConvert(remaining))
-    else
-      this:Hide()
+  local elapsed = now - this.start
+  if elapsed < 0 then
+    elapsed = elapsed + TIMER_WRAP_SECONDS
+  end
+
+  local remaining = this.duration - elapsed
+  if remaining > 0 then
+    local text = TimeConvert(remaining)
+    if this.lastText ~= text then
+      this.lastText = text
+      this.text:SetText(text)
     end
   else
-    -- I have absolutely no idea, but it works:
-    -- https://github.com/Stanzilla/WoWUIBugs/issues/47
-    local walltime = time()
-    local startupTime = walltime - now
-    -- just a simplification of: ((2^32) - (start * 1000)) / 1000
-    local cdTime = (2 ^ 32) / 1000 - this.start
-    local cdStartTime = startupTime - cdTime
-    local cdEndTime = cdStartTime + this.duration
-    local remaining = cdEndTime - walltime
-
-    if remaining >= 0 then
-      this.text:SetText(TimeConvert(remaining))
-    else
-      this:Hide()
-    end
+    this:Hide()
   end
 end
 
-local function CreateCoolDown(cooldown, start, duration)
+local function CreateCoolDown(cooldown)
   local parent = cooldown:GetParent()
   if not parent then return end
 
@@ -87,11 +84,14 @@ local function CreateCoolDown(cooldown, start, duration)
 end
 
 local function SetCooldown(this, start, duration, enable)
-  -- add support for omnicc's disable flag
-  if this.noCooldownCount then return end
-
-  -- skip ShaguPlates-owned frames (nameplates etc.)
-  if this.pfCooldownType then return end
+  -- Let OmniCC and ShaguPlates own their cooldown text. Also hide an overlay
+  -- that may have been created before either compatibility flag was applied.
+  if this.noCooldownCount or this.pfCooldownType then
+    if this.cooldowntext then
+      this.cooldowntext:Hide()
+    end
+    return
+  end
 
   -- don't draw global cooldowns
   if not duration or duration < 2 then
@@ -104,7 +104,7 @@ local function SetCooldown(this, start, duration, enable)
   end
 
   if not this.cooldowntext then
-    CreateCoolDown(this, start, duration)
+    CreateCoolDown(this)
   end
 
   if this.cooldowntext then
