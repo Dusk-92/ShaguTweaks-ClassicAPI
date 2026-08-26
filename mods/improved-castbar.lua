@@ -73,13 +73,19 @@ module.enable = function(self)
         end
     end
 
+    local timerFormat = "%.1f"..T["s"]
+
     local function UpdateTimer()
-        castbar:SetAlpha(CastingBarFrame:GetAlpha())
+        local alpha = CastingBarFrame:GetAlpha()
+        if castbar.lastAlpha ~= alpha then
+            castbar.lastAlpha = alpha
+            castbar:SetAlpha(alpha)
+        end
 
         local startTime = castbar.startTime
         local endTime = castbar.endTime
         if not startTime or not endTime or endTime <= startTime then
-            if CastingBarFrame:GetAlpha() == 0 then
+            if alpha == 0 then
                 castbar:Hide()
             end
             return
@@ -98,7 +104,12 @@ module.enable = function(self)
         cur = cur < 0 and 0 or cur
         local rem = castbar.isChannel and cur or (max - cur)
         rem = rem < 0 and 0 or rem
-        castbar.timerText:SetText(string.format("%.1f"..T["s"], rem))
+
+        local timerText = string.format(timerFormat, rem)
+        if castbar.lastTimerText ~= timerText then
+            castbar.lastTimerText = timerText
+            castbar.timerText:SetText(timerText)
+        end
 
         if now >= endTime then
             castbar.startTime = nil
@@ -124,6 +135,7 @@ module.enable = function(self)
         castbar.startTime = startTime / 1000
         castbar.endTime = endTime / 1000
         castbar.isChannel = isChannel
+        castbar.lastTimerText = nil
         castbar.spellText:SetText(cast)
 
         if texture then
@@ -162,17 +174,21 @@ module.enable = function(self)
         "UNIT_SPELLCAST_CHANNEL_UPDATE",
     }
 
-    local hasClassicEvents = false
-    if API and API.eventutils and _G.C_EventUtils and _G.C_EventUtils.IsEventValid then
-        for _, eventName in pairs(classicEvents) do
-            if _G.C_EventUtils.IsEventValid(eventName) then
-                events:RegisterEvent(eventName)
-                hasClassicEvents = true
+    local hasClassicEvents = API and API.eventutils and _G.C_EventUtils and _G.C_EventUtils.IsEventValid
+    if hasClassicEvents then
+        for index = 1, table.getn(classicEvents) do
+            if not _G.C_EventUtils.IsEventValid(classicEvents[index]) then
+                hasClassicEvents = false
+                break
             end
         end
     end
 
-    if not hasClassicEvents then
+    if hasClassicEvents then
+        for index = 1, table.getn(classicEvents) do
+            events:RegisterEvent(classicEvents[index])
+        end
+    else
         -- Compatibility with older ClassicAPI/plain 1.12: use the original
         -- player spellcast events as state-change triggers, not as a poller.
         events:RegisterEvent("SPELLCAST_START")
