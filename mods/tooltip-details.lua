@@ -9,6 +9,7 @@ local current_unit = "none"
 local current_guid = nil
 local statusbar = nil
 local tooltip_from_mouseover = false
+local tooltipSetStatusBarColor
 
 local direct_units = { "mouseover", "target", "focus", "player", "pet" }
 
@@ -45,10 +46,31 @@ local function TooltipMatchesMouseover()
     (UnitName("mouseover") == tooltipName or UnitPVPName("mouseover") == tooltipName)
 end
 
+local function ClearTooltipBarColor()
+  GameTooltipStatusBar.ShaguTweaksColorR = nil
+  GameTooltipStatusBar.ShaguTweaksColorG = nil
+  GameTooltipStatusBar.ShaguTweaksColorB = nil
+  GameTooltipStatusBar.ShaguTweaksColorA = nil
+end
+
+local function SetTooltipBarColor(r, g, b, a)
+  if not r or not g or not b then return end
+
+  GameTooltipStatusBar.ShaguTweaksColorR = r
+  GameTooltipStatusBar.ShaguTweaksColorG = g
+  GameTooltipStatusBar.ShaguTweaksColorB = b
+  GameTooltipStatusBar.ShaguTweaksColorA = a or 1
+
+  if tooltipSetStatusBarColor then
+    tooltipSetStatusBarColor(GameTooltipStatusBar, r, g, b, a or 1)
+  end
+end
+
 local function ResetTooltipIdentity()
   current_unit = "none"
   current_guid = nil
   tooltip_from_mouseover = false
+  ClearTooltipBarColor()
 
   if statusbar then
     statusbar.name = nil
@@ -157,6 +179,11 @@ local function UpdateTooltip()
     return
   end
 
+  -- A newly resolved unit chooses its own class/reaction color below. Clear the
+  -- previous enforcement first so an unknown color cannot leak from the last
+  -- tooltip while the same GameTooltip frame is being reused.
+  ClearTooltipBarColor()
+
   -- Remember whether this particular unit tooltip came from the world
   -- mouseover. If the same GUID is also the selected target, GetUnit() can
   -- legitimately resolve it as "target" after mouseover ends; this flag keeps
@@ -188,7 +215,7 @@ local function UpdateTooltip()
     if UnitIsPlayer(unit) and class then
       local color = RAID_CLASS_COLORS[class]
       if color then
-        GameTooltipStatusBar:SetStatusBarColor_orig(color.r, color.g, color.b)
+        SetTooltipBarColor(color.r, color.g, color.b, 1)
         GameTooltipStatusBar.bg:SetVertexColor(color.r * 0.15, color.g * 0.15, color.b * 0.15, 0.8)
         GameTooltipTextLeft1:SetText(rgbhex(color.r, color.g, color.b, color.a) .. name)
       else
@@ -197,7 +224,7 @@ local function UpdateTooltip()
     elseif reaction then
       local color = UnitReactionColor[reaction]
       if color then
-        GameTooltipStatusBar:SetStatusBarColor_orig(color.r, color.g, color.b)
+        SetTooltipBarColor(color.r, color.g, color.b, 1)
         GameTooltipStatusBar.bg:SetVertexColor(color.r * 0.15, color.g * 0.15, color.b * 0.15, 0.8)
       end
     end
@@ -293,8 +320,22 @@ module.enable = function(self)
   GameTooltipStatusBar.backdrop.health:SetPoint("TOP", 0, 4)
   GameTooltipStatusBar.backdrop.health:SetNonSpaceWrap(false)
 
-  GameTooltipStatusBar.SetStatusBarColor_orig = GameTooltipStatusBar.SetStatusBarColor
-  GameTooltipStatusBar.SetStatusBarColor = function() return end
+  -- Preserve the real statusbar method for Blizzard and other addons. A
+  -- post-hook reapplies ShaguTweaks' class/reaction color only while a unit
+  -- tooltip has an active desired color.
+  tooltipSetStatusBarColor = tooltipSetStatusBarColor or GameTooltipStatusBar.SetStatusBarColor
+  if not self.statusColorHooked then
+    self.statusColorHooked = true
+    ShaguTweaks.hooksecurefunc(GameTooltipStatusBar, "SetStatusBarColor", function()
+      local r = GameTooltipStatusBar.ShaguTweaksColorR
+      local g = GameTooltipStatusBar.ShaguTweaksColorG
+      local b = GameTooltipStatusBar.ShaguTweaksColorB
+      local a = GameTooltipStatusBar.ShaguTweaksColorA
+      if r and g and b then
+        tooltipSetStatusBarColor(GameTooltipStatusBar, r, g, b, a or 1)
+      end
+    end)
+  end
 
   -- update tooltip whenever it gets shown
   local details = CreateFrame("Frame", nil, GameTooltip)
