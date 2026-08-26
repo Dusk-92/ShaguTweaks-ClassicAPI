@@ -58,7 +58,6 @@ Use the latest ClassicAPI version and follow its upstream installation instructi
 - **Darkened UI** — Darker overall interface colors.
 - **Equip Compare** — Shows currently equipped items on tooltips while holding Shift.
 - **Unit Frame Health Colors** — Health text color changes based on value.
-- **Real Health Numbers** — Estimated health numbers on player, pet and target frames.
 - **Hide Errors** — Hides and ignores Lua errors from broken addons.
 - **Hide Gryphons** — Hides the gryphons next to the action bar.
 - **Item Rarity Borders** — Item rarity shown as border color on bags/bank/character/inspect frames.
