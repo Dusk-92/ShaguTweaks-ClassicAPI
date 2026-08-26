@@ -11,6 +11,7 @@ local module = ShaguTweaks:register({
 module.enable = function(self)
     local _G = ShaguTweaks.GetGlobalEnv()
     local font_default, font_size = "Fonts\\skurri.TTF", 15
+    local ROLL_FRAME_COUNT = 4
 
     ShaguTweaks.roll = CreateFrame("Frame", "STLootRoll", UIParent)
     ShaguTweaks.roll.frames = {}
@@ -22,7 +23,9 @@ module.enable = function(self)
 
     -- try to detect the everyone string
     local _, _, everyone, _ = strfind(LOOT_ROLL_ALL_PASSED, LOOT_ROLL_PASSED)
-    ShaguTweaks.roll.blacklist = { YOU, everyone }
+    ShaguTweaks.roll.blacklist = {}
+    if YOU then ShaguTweaks.roll.blacklist[YOU] = true end
+    if everyone then ShaguTweaks.roll.blacklist[everyone] = true end
 
     ShaguTweaks.roll.cache = {}
 
@@ -50,36 +53,45 @@ module.enable = function(self)
 
     function ShaguTweaks.roll:AddCache(hyperlink, name, roll)
     -- skip invalid names
-    for _, invalid in pairs(ShaguTweaks.roll.blacklist) do
-        if name == invalid then return end
-    end
+    if not hyperlink or not name then return end
+    if ShaguTweaks.roll.blacklist[name] then return end
 
     local _, _, itemLink = string.find(hyperlink, "(item:%d+:%d+:%d+:%d+)")
+    if not itemLink then return end
     local itemName = GetItemInfo(itemLink)
+    if not itemName then return end
+
+    local now = GetTime()
+    local itemCache = ShaguTweaks.roll.cache[itemName]
 
     -- delete obsolete tables
-    if ShaguTweaks.roll.cache[itemName] and ShaguTweaks.roll.cache[itemName]["TIMESTAMP"] < GetTime() - 60 then
+    if itemCache and itemCache["TIMESTAMP"] < now - 60 then
         ShaguTweaks.roll.cache[itemName] = nil
+        itemCache = nil
     end
 
     -- initialize itemtable
-    if not ShaguTweaks.roll.cache[itemName] then
-        ShaguTweaks.roll.cache[itemName] = { ["GREED"] = {}, ["NEED"] = {}, ["PASS"] = {}, ["TIMESTAMP"] = GetTime() }
+    if not itemCache then
+        itemCache = { ["GREED"] = {}, ["NEED"] = {}, ["PASS"] = {}, ["TIMESTAMP"] = now }
+        ShaguTweaks.roll.cache[itemName] = itemCache
     end
 
     -- ignore already listed names
-    for _, existing in pairs(ShaguTweaks.roll.cache[itemName][roll]) do
+    for _, existing in pairs(itemCache[roll]) do
         if name == existing then return end
     end
 
-    table.insert(ShaguTweaks.roll.cache[itemName][roll], name)
+    table.insert(itemCache[roll], name)
 
-    for id=1,4 do
+    local count_greed, count_need, count_pass
+
+    for id=1,ROLL_FRAME_COUNT do
         if ShaguTweaks.roll.frames[id]:IsVisible() and ShaguTweaks.roll.frames[id].itemname == itemName then
-        local count_greed = ShaguTweaks.roll.cache[itemName] and table.getn(ShaguTweaks.roll.cache[itemName]["GREED"]) or 0
-        local count_need  = ShaguTweaks.roll.cache[itemName] and table.getn(ShaguTweaks.roll.cache[itemName]["NEED"]) or 0
-        local count_pass  = ShaguTweaks.roll.cache[itemName] and table.getn(ShaguTweaks.roll.cache[itemName]["PASS"]) or 0
-
+        if not count_greed then
+            count_greed = table.getn(itemCache["GREED"])
+            count_need  = table.getn(itemCache["NEED"])
+            count_pass  = table.getn(itemCache["PASS"])
+        end
         ShaguTweaks.roll.frames[id].greed.count:SetText(count_greed > 0 and count_greed or "")
         ShaguTweaks.roll.frames[id].need.count:SetText(count_need > 0 and count_need or "")
         ShaguTweaks.roll.frames[id].pass.count:SetText(count_pass > 0 and count_pass or "")
@@ -270,11 +282,12 @@ module.enable = function(self)
     -- local r, g, b, a = 1, 1, 1, 1
     f.time.bar:SetStatusBarColor(r, g, b)
     f.time.bar:SetValue(20)
+    f.time.bar.rollFrame = f
     f.time.bar:SetScript("OnUpdate", function()
-        if not this:GetParent():GetParent().rollID then return end
-        local left = GetLootRollTimeLeft(this:GetParent():GetParent().rollID)
-        local min, max = this:GetMinMaxValues()
-        if left < min or left > max then left = min end
+        local frame = this.rollFrame
+        if not frame.rollID then return end
+        local left = GetLootRollTimeLeft(frame.rollID)
+        if left < 0 or left > frame.rollTime then left = 0 end
         this:SetValue(left)
     end)
 
@@ -283,70 +296,74 @@ module.enable = function(self)
 
     ShaguTweaks.roll:RegisterEvent("CANCEL_LOOT_ROLL")
     ShaguTweaks.roll:SetScript("OnEvent", function()
-    for i=1,4 do
+    for i=1,ROLL_FRAME_COUNT do
         if ShaguTweaks.roll.frames[i].rollID == arg1 then
         ShaguTweaks.roll.frames[i]:Hide()
+        ShaguTweaks.roll.frames[i].rollID = nil
+        return
         end
     end
     end)
 
     function _G.GroupLootFrame_OpenNewFrame(id, rollTime)
-    -- clear cache if possible
-    local visible = nil
-    for i=1,4 do
-        visible = visible or ShaguTweaks.roll.frames[i]:IsVisible()
+    local visible, available
+    for i=1,ROLL_FRAME_COUNT do
+        local isVisible = ShaguTweaks.roll.frames[i]:IsVisible()
+        visible = visible or isVisible
+        available = available or not isVisible and i
     end
+
+    -- clear cache if possible
     if not visible then ShaguTweaks.roll.cache = {} end
 
-    -- setup roll frames
-    for i=1,4 do
-        if not ShaguTweaks.roll.frames[i]:IsVisible() then
-        ShaguTweaks.roll.frames[i].rollID = id
-        ShaguTweaks.roll.frames[i].rollTime = rollTime
-        ShaguTweaks.roll:UpdateLootRoll(i)
-        return
-        end
+    -- setup the first available roll frame
+    if available then
+        ShaguTweaks.roll.frames[available].rollID = id
+        ShaguTweaks.roll.frames[available].rollTime = rollTime
+        ShaguTweaks.roll:UpdateLootRoll(available)
     end
     end
 
     function ShaguTweaks.roll:UpdateLootRoll(id)
-    local texture, name, count, quality, bop = GetLootRollItemInfo(ShaguTweaks.roll.frames[id].rollID)
+    local frame = ShaguTweaks.roll.frames[id]
+    local texture, name, count, quality, bop = GetLootRollItemInfo(frame.rollID)
     local color = ITEM_QUALITY_COLORS[quality]
 
-    ShaguTweaks.roll.frames[id].itemname = name
+    frame.itemname = name
 
-    local count_greed = ShaguTweaks.roll.cache[name] and table.getn(ShaguTweaks.roll.cache[name]["GREED"]) or 0
-    local count_need  = ShaguTweaks.roll.cache[name] and table.getn(ShaguTweaks.roll.cache[name]["NEED"]) or 0
-    local count_pass  = ShaguTweaks.roll.cache[name] and table.getn(ShaguTweaks.roll.cache[name]["PASS"]) or 0
+    local itemCache = ShaguTweaks.roll.cache[name]
+    local count_greed = itemCache and table.getn(itemCache["GREED"]) or 0
+    local count_need  = itemCache and table.getn(itemCache["NEED"]) or 0
+    local count_pass  = itemCache and table.getn(itemCache["PASS"]) or 0
 
-    ShaguTweaks.roll.frames[id].greed.count:SetText(count_greed > 0 and count_greed or "")
-    ShaguTweaks.roll.frames[id].need.count:SetText(count_need > 0 and count_need or "")
-    ShaguTweaks.roll.frames[id].pass.count:SetText(count_pass > 0 and count_pass or "")
+    frame.greed.count:SetText(count_greed > 0 and count_greed or "")
+    frame.need.count:SetText(count_need > 0 and count_need or "")
+    frame.pass.count:SetText(count_pass > 0 and count_pass or "")
 
-    ShaguTweaks.roll.frames[id].name.text:SetText(name)
-    ShaguTweaks.roll.frames[id].name.text:SetTextColor(color.r, color.g, color.b, 1)
-    ShaguTweaks.roll.frames[id].icon.tex:SetTexture(texture)
-    ShaguTweaks.roll.frames[id].backdrop:SetBackdropBorderColor(color.r, color.g, color.b)
-    ShaguTweaks.roll.frames[id].time.bar:SetMinMaxValues(0, ShaguTweaks.roll.frames[id].rollTime)
+    frame.name.text:SetText(name)
+    frame.name.text:SetTextColor(color.r, color.g, color.b, 1)
+    frame.icon.tex:SetTexture(texture)
+    frame.backdrop:SetBackdropBorderColor(color.r, color.g, color.b)
+    frame.time.bar:SetMinMaxValues(0, frame.rollTime)
 
     -- if C.loot.raritytimer == "1" then
-        ShaguTweaks.roll.frames[id].time.bar:SetStatusBarColor(color.r, color.g, color.b, .5)
+        frame.time.bar:SetStatusBarColor(color.r, color.g, color.b, .5)
     -- end
 
     if bop then
-        -- ShaguTweaks.roll.frames[id].boe.text:SetText(T["BoP"])
-        ShaguTweaks.roll.frames[id].boe.text:SetText("BoP")
-        ShaguTweaks.roll.frames[id].boe.text:SetTextColor(1,.3,.3,1)
+        -- frame.boe.text:SetText(T["BoP"])
+        frame.boe.text:SetText("BoP")
+        frame.boe.text:SetTextColor(1,.3,.3,1)
     else
-        -- ShaguTweaks.roll.frames[id].boe.text:SetText(T["BoE"])
-        ShaguTweaks.roll.frames[id].boe.text:SetText("BoE")
-        ShaguTweaks.roll.frames[id].boe.text:SetTextColor(.3,1,.3,1)
+        -- frame.boe.text:SetText(T["BoE"])
+        frame.boe.text:SetText("BoE")
+        frame.boe.text:SetTextColor(.3,1,.3,1)
     end
 
-    ShaguTweaks.roll.frames[id]:Show()
+    frame:Show()
     end
 
-    for i=1,4 do
+    for i=1,ROLL_FRAME_COUNT do
     if not ShaguTweaks.roll.frames[i] then
         ShaguTweaks.roll.frames[i] = ShaguTweaks.roll:CreateLootRoll(i)
         -- ShaguTweaks.roll.frames[i]:SetPoint("CENTER", 0, -i*35)
