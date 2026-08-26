@@ -1,5 +1,8 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
+local hooksecurefunc = hooksecurefunc or ShaguTweaks.hooksecurefunc
+
+local FALLBACK_CLASS_COLOR = { r = .5, g = .5, b = .5, a = 1 }
 
 local module = ShaguTweaks:register({
   title = T["Unit Frame Class Colors"],
@@ -9,37 +12,57 @@ local module = ShaguTweaks:register({
   enabled = nil,
 })
 
-local partycolors = function()
+local function GetUnitClassColor(unit)
+  local _, class = UnitClass(unit)
+  return RAID_CLASS_COLORS[class] or FALLBACK_CLASS_COLOR
+end
+
+local function SetTextColorIfChanged(fontString, r, g, b, a)
+  local cr, cg, cb, ca = fontString:GetTextColor()
+  if cr ~= r or cg ~= g or cb ~= b or ca ~= a then
+    fontString:SetTextColor(r, g, b, a)
+  end
+end
+
+local function SetVertexColorIfChanged(texture, r, g, b, a)
+  local cr, cg, cb, ca = texture:GetVertexColor()
+  if cr ~= r or cg ~= g or cb ~= b or ca ~= a then
+    texture:SetVertexColor(r, g, b, a)
+  end
+end
+
+local function UpdatePartyColors()
   for id = 1, MAX_PARTY_MEMBERS do
-    local name = _G['PartyMemberFrame'..id..'Name']
-    local _, class = UnitClass("party" .. id)
-    local class = RAID_CLASS_COLORS[class] or { r = .5, g = .5, b = .5, a = 1 }
-    if name then name:SetTextColor(class.r, class.g, class.b, 1) end
+    local name = _G["PartyMemberFrame" .. id .. "Name"]
+    if name then
+      local color = GetUnitClassColor("party" .. id)
+      SetTextColorIfChanged(name, color.r, color.g, color.b, 1)
+    end
   end
 end
 
 module.enable = function(self)
-  -- enable class color backgrounds
-  local original = TargetFrame_CheckFaction
-  function TargetFrame_CheckFaction(self)
-    original(self)
+  local function UpdateTargetClassColor()
+    if not TargetFrameNameBackground then return end
 
     local reaction = UnitReaction("target", "player")
-
-	  if UnitIsPlayer("target") then
-	    local _, class = UnitClass("target")
-	    local class = RAID_CLASS_COLORS[class] or { r = .5, g = .5, b = .5, a = 1 }
-	    TargetFrameNameBackground:SetVertexColor(class.r, class.g, class.b, 1)
-	    TargetFrameNameBackground:Show()
-	  elseif reaction and reaction > 4 then
-	    TargetFrameNameBackground:Hide()
+    if UnitIsPlayer("target") then
+      local color = GetUnitClassColor("target")
+      SetVertexColorIfChanged(TargetFrameNameBackground,
+        color.r, color.g, color.b, 1)
+      TargetFrameNameBackground:Show()
+    elseif reaction and reaction > 4 then
+      TargetFrameNameBackground:Hide()
     else
-	    TargetFrameNameBackground:Show()
+      TargetFrameNameBackground:Show()
     end
   end
 
-  local _, class = UnitClass("player")
-  local class = RAID_CLASS_COLORS[class] or { r = .5, g = .5, b = .5, a = 1 }
+  -- Let Blizzard and other addons finish their target-faction handling first,
+  -- then apply the class-color background instead of replacing the global.
+  hooksecurefunc("TargetFrame_CheckFaction", UpdateTargetClassColor)
+
+  local playerColor = GetUnitClassColor("player")
 
   -- add name background to player frame
   PlayerFrameNameBackground = PlayerFrame:CreateTexture(nil, "BACKGROUND")
@@ -47,14 +70,14 @@ module.enable = function(self)
   PlayerFrameNameBackground:SetWidth(119)
   PlayerFrameNameBackground:SetHeight(19)
   PlayerFrameNameBackground:SetPoint("TOPLEFT", 106, -22)
-  PlayerFrameNameBackground:SetVertexColor(class.r, class.g, class.b, 1)
+  PlayerFrameNameBackground:SetVertexColor(playerColor.r, playerColor.g, playerColor.b, 1)
 
   local wait = CreateFrame("Frame")
   wait:RegisterEvent("PLAYER_ENTERING_WORLD")
   wait:SetScript("OnEvent", function()
-    local _, class = UnitClass("player")
-    local class = RAID_CLASS_COLORS[class] or { r = .5, g = .5, b = .5, a = 1 }
-    PlayerFrameNameBackground:SetVertexColor(class.r, class.g, class.b, 1)
+    local color = GetUnitClassColor("player")
+    SetVertexColorIfChanged(PlayerFrameNameBackground,
+      color.r, color.g, color.b, 1)
     this:UnregisterAllEvents()
 
     -- make sure to keep name background above frame shadow
@@ -67,12 +90,11 @@ module.enable = function(self)
   PlayerFrame.name:SetFont(font, size, "NONE")
   TargetFrame.name:SetFont(font, size, "NONE")
 
-  -- add party frame class colors
-  local HookPartyMemberFrame_UpdateMember = PartyMemberFrame_UpdateMember
-  PartyMemberFrame_UpdateMember = function(self)
-    HookPartyMemberFrame_UpdateMember(self)
-    partycolors()
-  end
+  -- Update party name colors after the stock member refresh instead of
+  -- replacing PartyMemberFrame_UpdateMember. Cached color writes avoid doing
+  -- extra rendering work when the class did not change.
+  hooksecurefunc("PartyMemberFrame_UpdateMember", UpdatePartyColors)
 
-  partycolors()
+  UpdateTargetClassColor()
+  UpdatePartyColors()
 end
