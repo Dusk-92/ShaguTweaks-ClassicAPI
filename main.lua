@@ -3,15 +3,22 @@ local _G = _G or getfenv(0)
 SLASH_RELOAD1 = '/rl'
 function SlashCmdList.RELOAD(msg, editbox) ReloadUI() end
 
-message = function(msg)
-  DEFAULT_CHAT_FRAME:AddMessage("|cffffff00" .. ( msg or "nil" ))
+local function ChatMessage(msg)
+  DEFAULT_CHAT_FRAME:AddMessage("|cffffff00" .. tostring(msg or "nil"))
 end
-print = print or message
 
-error = function(msg)
-  DEFAULT_CHAT_FRAME:AddMessage("|cffff0000".. (msg or "nil" ))
+-- Keep the client's native message() function when available. Older clients
+-- without print() still get the historical ShaguTweaks chat fallback.
+message = message or ChatMessage
+print = print or ChatMessage
+
+local function ChatErrorHandler(msg)
+  DEFAULT_CHAT_FRAME:AddMessage("|cffff0000" .. tostring(msg or "nil"))
 end
-seterrorhandler(error)
+
+-- Route uncaught Lua errors to chat without replacing Lua's global error().
+-- Addons rely on error() to abort invalid execution paths.
+seterrorhandler(ChatErrorHandler)
 
 ShaguTweaks = CreateFrame("Frame")
 ShaguTweaks.mods = {}
