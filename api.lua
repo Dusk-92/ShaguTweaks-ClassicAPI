@@ -31,6 +31,12 @@ API.aurapositional = type(_G.C_UnitAuras) == "table"
 
 API.spellinfo = type(_G.GetSpellInfo) == "function"
 API.actioninfo = type(_G.GetActionInfo) == "function"
+API.autoattack = type(_G.C_Spell) == "table"
+  and type(_G.C_Spell.IsAutoAttackSpell) == "function"
+  and type(_G.C_Spell.IsRangedAutoAttackSpell) == "function"
+API.autoattackbook = type(_G.C_SpellBook) == "table"
+  and type(_G.C_SpellBook.IsAutoAttackSpellBookItem) == "function"
+  and type(_G.C_SpellBook.IsRangedAutoAttackSpellBookItem) == "function"
 
 API.inventory = type(_G.C_Container) == "table"
   and type(_G.C_Container.GetContainerNumFreeSlots) == "function"
@@ -145,6 +151,24 @@ API.GetActionInfo = function(slot)
   if API.actioninfo then
     return _G.GetActionInfo(slot)
   end
+end
+
+API.IsAutoAttackSpell = function(spellID)
+  return API.autoattack and _G.C_Spell.IsAutoAttackSpell(spellID) or false
+end
+
+API.IsRangedAutoAttackSpell = function(spellID)
+  return API.autoattack and _G.C_Spell.IsRangedAutoAttackSpell(spellID) or false
+end
+
+API.IsAutoAttackSpellBookItem = function(slot, bookType)
+  return API.autoattackbook
+    and _G.C_SpellBook.IsAutoAttackSpellBookItem(slot, bookType) or false
+end
+
+API.IsRangedAutoAttackSpellBookItem = function(slot, bookType)
+  return API.autoattackbook
+    and _G.C_SpellBook.IsRangedAutoAttackSpellBookItem(slot, bookType) or false
 end
 
 API.GetAuraDataByIndex = function(unit, index, filter)
