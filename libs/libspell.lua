@@ -2,17 +2,43 @@ local _G = ShaguTweaks.GetGlobalEnv()
 local API = ShaguTweaks.API
 local libtipscan = ShaguTweaks.libtipscan
 
--- Keep one scanner as a compatibility fallback for older ClassicAPI builds.
--- Current ClassicAPI supplies spell metadata directly and normally bypasses it.
-local scanner = libtipscan:GetScanner("libspell")
+-- Current ClassicAPI supplies spell metadata directly. Create the tooltip
+-- scanner only if that surface is unavailable for a specific lookup.
+local scanner
+local function GetScanner()
+  if not scanner then
+    scanner = libtipscan:GetScanner("libspell")
+  end
+  return scanner
+end
+
 local libspell = {}
+local spellmaxrank = {}
+local spellindex = {}
+local spellinfo = {}
+
+local function ClearSpellCaches()
+  spellmaxrank = {}
+  spellindex = {}
+  spellinfo = {}
+end
+
+-- Learned ranks and talent/trainer changes can invalidate both successful and
+-- negative spellbook lookups. Without clearing these caches, a spell queried
+-- before it was learned can remain "missing" until the next UI reload.
+local events = CreateFrame("Frame")
+events:RegisterEvent("LEARNED_SPELL_IN_TAB")
+if API.eventutils and _G.C_EventUtils
+  and _G.C_EventUtils.IsEventValid("SPELLS_CHANGED") then
+  events:RegisterEvent("SPELLS_CHANGED")
+end
+events:SetScript("OnEvent", ClearSpellCaches)
 
 -- [ GetSpellMaxRank ]
 -- Returns the maximum rank of a players spell.
 -- 'name'       [string]            spellname to query
 -- return:      [string],[number]   maximum rank in characters and the number
 --                                  e.g "Rank 1" and "1"
-local spellmaxrank = {}
 function libspell.GetSpellMaxRank(name)
   local cache = spellmaxrank[name]
   if cache then return cache[1], cache[2] end
@@ -43,7 +69,6 @@ end
 -- 'name'       [string]            spellname to query
 -- 'rank'       [string]            rank to query (optional)
 -- return:      [number],[string]   spell index and spellbook id
-local spellindex = {}
 function libspell.GetSpellIndex(name, rank)
   if not name then return end
   local cache = spellindex[name..(rank or "")]
@@ -81,7 +106,6 @@ end
 --              [number]            Casting time of the spell in milliseconds
 --              [number]            Minimum range from the target required to cast the spell
 --              [number]            Maximum range from the target at which you can cast the spell
-local spellinfo = {}
 function libspell.GetSpellInfo(index, bookType)
   local cacheKey = tostring(index) .. ":" .. tostring(bookType or "")
   local cache = spellinfo[cacheKey]
@@ -118,10 +142,11 @@ function libspell.GetSpellInfo(index, bookType)
     else
       -- Legacy fallback for an outdated/missing ClassicAPI spell-info surface.
       icon = GetSpellTexture(id, bookType) or ""
-      scanner:SetSpell(id, bookType)
-      local _, sec = scanner:Find(gsub(SPELL_CAST_TIME_SEC, "%%.3g", "%(.+%)"))
-      local _, min = scanner:Find(gsub(SPELL_CAST_TIME_MIN, "%%.3g", "%(.+%)"))
-      local _, range = scanner:Find(gsub(SPELL_RANGE, "%%s", "%(.+%)"))
+      local tip = GetScanner()
+      tip:SetSpell(id, bookType)
+      local _, sec = tip:Find(gsub(SPELL_CAST_TIME_SEC, "%%.3g", "%(.+%)"))
+      local _, min = tip:Find(gsub(SPELL_CAST_TIME_MIN, "%%.3g", "%(.+%)"))
+      local _, range = tip:Find(gsub(SPELL_RANGE, "%%s", "%(.+%)"))
       castingTime = (tonumber(sec) or tonumber(min) or 0) * 1000
       if range then
         local _, _, low, high = string.find(range, "(.+)-(.+)")
