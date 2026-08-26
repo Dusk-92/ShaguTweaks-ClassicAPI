@@ -1,5 +1,5 @@
-local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
+local hooksecurefunc = hooksecurefunc or ShaguTweaks.hooksecurefunc
 
 local module = ShaguTweaks:register({
   title = T["Hide Tracking Icon"],
@@ -11,7 +11,12 @@ local module = ShaguTweaks:register({
 })
 
 module.enable = function(self)
-  -- Désactive l'affichage automatique du bouton de suivi
-  MiniMapTrackingFrame.Show = function() end
+  -- Keep the tracking icon hidden without replacing its Show method. This
+  -- preserves Blizzard/Turtle and addon behavior while applying our visual
+  -- preference after every attempted show.
+  hooksecurefunc(MiniMapTrackingFrame, "Show", function()
+    MiniMapTrackingFrame:Hide()
+  end)
+
   MiniMapTrackingFrame:Hide()
 end
