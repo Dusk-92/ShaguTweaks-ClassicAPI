@@ -40,8 +40,10 @@ module.enable = function(self)
 
     local text
     if rest > 0 then
-      -- Preserve the existing Turtle/Vanilla rested display calculation.
-      local restPct = math.floor(math.min(rest / (max * 1.5) * 100, 100))
+      -- Turtle WoW 1.18.1 reduced rested creature XP from +100% to +50%.
+      -- The effective GetXPExhaustion full-rest threshold is about 112.5% of
+      -- the current level XP, so normalize that pool to a 0-100% display.
+      local restPct = math.floor(math.min(rest / (max * 1.125) * 100, 100))
       text = "|cffffffff" .. xpPct .. "%|r |cffaaaaaa(|cffa78aca" .. restPct .. "%|cffaaaaaa)|r"
     else
       text = "|cffffffff" .. xpPct .. "%|r"
