@@ -38,7 +38,6 @@ libs\libspell.lua
 libs\libcast.lua
 libs\libdebuff.lua
 libs\libunitscan.lua
-libs\libhealth.lua
 libs\libnameplate.lua
 libs\libpredict.lua
 
@@ -70,7 +69,6 @@ mods\target-castbar.lua
 mods\target-debufftimer.lua
 mods\social-colors.lua
 mods\item-colors.lua
-mods\health-numbers.lua
 mods\health-color.lua
 mods\auto-dismount.lua
 mods\auto-stance.lua
