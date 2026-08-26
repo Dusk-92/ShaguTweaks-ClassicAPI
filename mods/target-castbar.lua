@@ -76,6 +76,28 @@ local function QueryLegacy(query)
   end
 end
 
+local function QuerySuperWoW(guid, channelSpellID, hasChannel)
+  if not guid then return end
+
+  local cached = ShaguTweaks.libcast.db[guid]
+  if not cached then return end
+
+  if cached.channel then
+    if not hasChannel or cached.spellID ~= channelSpellID then return end
+
+    local channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyChannelInfo(guid)
+    if channel then
+      return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
+    end
+    return
+  end
+
+  local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyCastingInfo(guid)
+  if cast then
+    return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
+  end
+end
+
 local function QueryCast(unit)
   if not unit then return end
 
@@ -89,18 +111,20 @@ local function QueryCast(unit)
       return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
     end
 
-    local channel
-    channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo(unit)
+    local channel, notInterruptible, channelSpellID, hasChannel
+    channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill,
+      notInterruptible, channelSpellID, hasChannel = API.GetChannelInfo(unit)
     if channel then
       return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
     end
 
-    -- SuperWoW's GUID-keyed legacy cache is still safe because it cannot
-    -- collide merely because two creatures share the same display name.
+    -- SuperWoW remains the GUID-keyed fallback for regular casts. Channels
+    -- additionally require ClassicAPI's authoritative live state and matching
+    -- spellID, preventing a stale cached channel from becoming a ghost bar.
     if ShaguTweaks.superwow_active and not UnitIsUnit(unit, "player") then
       local guid = API.UnitGUID(unit)
       if guid then
-        local a, b, c, d, e, f, g, h = QueryLegacy(guid)
+        local a, b, c, d, e, f, g, h = QuerySuperWoW(guid, channelSpellID, hasChannel)
         if a then return a, b, c, d, e, f, g, h end
       end
     end

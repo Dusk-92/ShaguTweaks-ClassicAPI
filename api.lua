@@ -120,10 +120,19 @@ API.GetChannelInfo = function(unit)
   local name, displayName, texture, startTime, endTime, isTradeSkill,
     notInterruptible, spellID = _G.C_Spell.UnitChannelInfo(unit)
 
-  if not name or not startTime or not endTime then return end
+  if not name then return end
+
+  -- ClassicAPI can know that a remote unit is channeling even when the
+  -- channel began before it was observed, in which case timing is nil. Keep
+  -- the normalized first value nil, but expose the live spell identity in
+  -- trailing values so castbar modules can safely try a timed SuperWoW cache.
+  if not startTime or not endTime then
+    return nil, nil, nil, nil, nil, nil, nil,
+      notInterruptible, spellID, true
+  end
 
   return name, "", displayName or "", texture, startTime, endTime,
-    isTradeSkill, notInterruptible, spellID
+    isTradeSkill, notInterruptible, spellID, true
 end
 
 API.IsSpellInRange = function(spell, unit)

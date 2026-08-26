@@ -27,6 +27,28 @@ local function QueryLegacy(query)
   end
 end
 
+local function QuerySuperWoW(guid, channelSpellID, hasChannel)
+  if not guid then return end
+
+  local cached = ShaguTweaks.libcast.db[guid]
+  if not cached then return end
+
+  if cached.channel then
+    if not hasChannel or cached.spellID ~= channelSpellID then return end
+
+    local channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyChannelInfo(guid)
+    if channel then
+      return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
+    end
+    return
+  end
+
+  local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyCastingInfo(guid)
+  if cast then
+    return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
+  end
+end
+
 module.enable = function(self)
   if ShaguPlates then return end
 
@@ -111,17 +133,20 @@ module.enable = function(self)
         return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
       end
 
-      local channel
-      channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo(unit)
+      local channel, notInterruptible, channelSpellID, hasChannel
+      channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill,
+        notInterruptible, channelSpellID, hasChannel = API.GetChannelInfo(unit)
       if channel then
         return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
       end
 
       -- With a real ClassicAPI unit token, "no cast" is authoritative. Never
       -- fall through to the old name-keyed database, otherwise two mobs with
-      -- the same name can incorrectly share a castbar.
+      -- the same name can incorrectly share a castbar. The GUID-keyed
+      -- SuperWoW fallback remains safe; channels must also match ClassicAPI's
+      -- live channel spellID before their cached timing is trusted.
       if ShaguTweaks.superwow_active and plate.guid then
-        return QueryLegacy(plate.guid)
+        return QuerySuperWoW(plate.guid, channelSpellID, hasChannel)
       end
       return
     end
