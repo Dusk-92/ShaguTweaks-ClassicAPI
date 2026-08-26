@@ -1,5 +1,5 @@
-local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
+local hooksecurefunc = hooksecurefunc or ShaguTweaks.hooksecurefunc
 
 local module = ShaguTweaks:register({
   title = T["Unit Frame Big Health"],
@@ -9,68 +9,65 @@ local module = ShaguTweaks:register({
   enabled = nil,
 })
 
-
 local addonpath
 local tocs = { "", "-master", "-tbc", "-wotlk" }
-for _, name in pairs(tocs) do
-  local current = string.format("ShaguTweaks%s", name)
+for i = 1, table.getn(tocs) do
+  local current = string.format("ShaguTweaks%s", tocs[i])
   local _, title = GetAddOnInfo(current)
   if title then
     addonpath = "Interface\\AddOns\\" .. current
     break
   end
 end
+addonpath = addonpath or "Interface\\AddOns\\ShaguTweaks"
 
 module.enable = function(self)
-  PlayerFrameTexture:SetTexture(addonpath .. "\\img\\UI-TargetingFrame")
+  local normalTexture = addonpath .. "\\img\\UI-TargetingFrame"
+  local eliteTexture = addonpath .. "\\img\\UI-TargetingFrame-Elite"
+  local rareTexture = addonpath .. "\\img\\UI-TargetingFrame-Rare"
+
+  PlayerFrameTexture:SetTexture(normalTexture)
   PlayerFrameHealthBar:SetPoint("TOPLEFT", 106, -22)
   PlayerFrameHealthBar:SetHeight(30)
 
   PlayerStatusTexture:SetTexture(addonpath .. "\\img\\UI-Player-Status")
 
-  TargetFrameTexture:SetTexture(addonpath .. "\\img\\UI-TargetingFrame")
+  TargetFrameTexture:SetTexture(normalTexture)
   TargetFrameHealthBar:SetPoint("TOPRIGHT", -106, -22)
   TargetFrameHealthBar:SetHeight(30)
 
-
-  local original = TargetFrame_CheckClassification
-  function TargetFrame_CheckClassification()
-    local classification = UnitClassification("target")
-    if ( classification == "worldboss" ) then
-      TargetFrameTexture:SetTexture(addonpath .. "\\img\\UI-TargetingFrame-Elite")
-    elseif ( classification == "rareelite"  ) then
-      TargetFrameTexture:SetTexture(addonpath .. "\\img\\UI-TargetingFrame-Elite")
-    elseif ( classification == "elite"  ) then
-      TargetFrameTexture:SetTexture(addonpath .. "\\img\\UI-TargetingFrame-Elite")
-    elseif ( classification == "rare"  ) then
-      TargetFrameTexture:SetTexture(addonpath .. "\\img\\UI-TargetingFrame-Rare")
-    else
-      TargetFrameTexture:SetTexture(addonpath .. "\\img\\UI-TargetingFrame")
-    end
-  end
-
-
-  local wait = CreateFrame("Frame")
-  wait:RegisterEvent("PLAYER_ENTERING_WORLD")
-  wait:SetScript("OnEvent", function()
-    -- apply darkmode if required
+  -- Dark mode is applied after the world has loaded. Keep this event separate
+  -- from the one-frame deferred setup so the event cannot be unregistered early.
+  local world = CreateFrame("Frame")
+  world:RegisterEvent("PLAYER_ENTERING_WORLD")
+  world:SetScript("OnEvent", function()
     ShaguTweaks.DarkenFrame(PlayerFrameTexture)
     ShaguTweaks.DarkenFrame(TargetFrameTexture)
-
-    -- adjust healthbar colors to frame colors
-    local original = TargetFrame_CheckFaction
-    function TargetFrame_CheckFaction(self)
-      original(self)
-
-      if TargetFrameHealthBar._SetStatusBarColor then
-        local r, g, b, a = TargetFrameNameBackground:GetVertexColor()
-        TargetFrameHealthBar:_SetStatusBarColor(r, g, b, a)
-      end
-    end
+    this:UnregisterAllEvents()
   end)
 
-  -- delay to first draw
-  wait:SetScript("OnUpdate", function()
+  -- Delay hook installation by one frame so all enabled unit-frame modules have
+  -- finished their setup first. This keeps hooks attached to the final handlers.
+  local deferred = CreateFrame("Frame")
+  deferred:SetScript("OnUpdate", function()
+    this:SetScript("OnUpdate", nil)
+    this:Hide()
+
+    local function UpdateTargetClassificationTexture()
+      local classification = UnitClassification("target")
+      if classification == "worldboss" or classification == "rareelite" or classification == "elite" then
+        TargetFrameTexture:SetTexture(eliteTexture)
+      elseif classification == "rare" then
+        TargetFrameTexture:SetTexture(rareTexture)
+      else
+        TargetFrameTexture:SetTexture(normalTexture)
+      end
+    end
+
+    -- Let Blizzard and other addons finish classification handling, then apply
+    -- the matching Big Health texture instead of replacing the global function.
+    hooksecurefunc("TargetFrame_CheckClassification", UpdateTargetClassificationTexture)
+
     -- move text strings a bit higher
     if PlayerFrameHealthBar.TextString then
       PlayerFrameHealthBar.TextString:SetPoint("TOP", PlayerFrameHealthBar, "BOTTOM", 0, 23)
@@ -80,34 +77,47 @@ module.enable = function(self)
       TargetFrameHealthBar.TextString:SetPoint("TOP", TargetFrameHealthBar, "BOTTOM", -2, 23)
     end
 
-    -- use class color for player (if enabled)
-    if PlayerFrameNameBackground then
-      -- disable vanilla ui color restore functions
-      PlayerFrameHealthBar._SetStatusBarColor = PlayerFrameHealthBar.SetStatusBarColor
-      PlayerFrameHealthBar.SetStatusBarColor = function() return end
+    local playerSetStatusBarColor = PlayerFrameHealthBar.SetStatusBarColor
+    local targetSetStatusBarColor = TargetFrameHealthBar.SetStatusBarColor
 
-      -- set player healthbar to class color
+    local function ApplyPlayerHealthColor()
+      if not PlayerFrameNameBackground or not playerSetStatusBarColor then return end
       local r, g, b, a = PlayerFrameNameBackground:GetVertexColor()
-      PlayerFrameHealthBar:_SetStatusBarColor(r, g, b, a)
+      playerSetStatusBarColor(PlayerFrameHealthBar, r, g, b, a)
+    end
 
-      -- hide status textures
+    local function ApplyTargetHealthColor()
+      if not TargetFrameNameBackground or not targetSetStatusBarColor then return end
+      local r, g, b, a = TargetFrameNameBackground:GetVertexColor()
+      targetSetStatusBarColor(TargetFrameHealthBar, r, g, b, a)
+    end
+
+    -- Keep the Big Health colors without replacing SetStatusBarColor with a
+    -- no-op. Other addons may still call the original method normally.
+    if PlayerFrameNameBackground then
+      hooksecurefunc(PlayerFrameHealthBar, "SetStatusBarColor", ApplyPlayerHealthColor)
+      hooksecurefunc(PlayerFrameNameBackground, "Show", function()
+        PlayerFrameNameBackground:Hide()
+      end)
       PlayerFrameNameBackground:Hide()
-      PlayerFrameNameBackground.Show = function() return end
+      ApplyPlayerHealthColor()
     end
 
-    -- use frame color for target frame
     if TargetFrameNameBackground then
-      -- disable vanilla ui color restore functions
-      TargetFrameHealthBar._SetStatusBarColor = TargetFrameHealthBar.SetStatusBarColor
-      TargetFrameHealthBar.SetStatusBarColor = function() return end
-
-      -- hide status textures
-      TargetFrameNameBackground.Show = function() return end
+      hooksecurefunc(TargetFrameHealthBar, "SetStatusBarColor", ApplyTargetHealthColor)
+      hooksecurefunc(TargetFrameNameBackground, "Show", function()
+        TargetFrameNameBackground:Hide()
+      end)
       TargetFrameNameBackground:Hide()
+      ApplyTargetHealthColor()
     end
 
-    TargetFrame_CheckFaction(PlayerFrame)
-    wait:UnregisterAllEvents()
-    wait:Hide()
+    -- Reapply the target health color after faction/class-color updates.
+    hooksecurefunc("TargetFrame_CheckFaction", ApplyTargetHealthColor)
+
+    -- Refresh once because the target frame may already have been initialized
+    -- before this deferred setup ran.
+    UpdateTargetClassificationTexture()
+    TargetFrame_CheckFaction()
   end)
 end
