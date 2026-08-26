@@ -1,9 +1,5 @@
--- TurtleWoW decided to change and add QoL features to their
--- default client, which they consider to be wanted by everyone.
--- This modules lets you disable the target-healthpoints again.
---
--- Depending on the amount of changes in future, this might move
--- from "Unit Frames" to a more general "Revert TWoW Changes" module.
+-- Turtle WoW changes parts of the stock 1.12 UI and gameplay APIs.
+-- Keep the small compatibility adjustments that ShaguTweaks still needs.
 
 -- Skip module initialization on every other client than TurtleWoW.
 if not TargetHPText or not TargetHPPercText then return end
@@ -19,15 +15,6 @@ local module = ShaguTweaks:register({
 })
 
 module.enable = function(self)
-  -- hide turtle-wow's target status texts
-  if ShaguTweaks_config[T["Real Health Numbers"]] == 1 then
-    TargetHPText:Hide()
-    TargetHPText.Show = function() return end
-
-    TargetHPPercText:Hide()
-    TargetHPPercText.Show  = function() return end
-  end
-
   if ShaguTweaks_config[T["MiniMap Clock"]] == 1 then
     MinimapClock:SetScript("OnEnter", function()
       -- read game time
