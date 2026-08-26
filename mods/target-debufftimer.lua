@@ -75,6 +75,102 @@ local function GetTargetDebuff(index, now)
   return GetLegacyDebuff(index)
 end
 
+-- All readable debuff timers share one throttled updater. The old code attached
+-- one OnUpdate handler to every visible debuff, multiplying GetTime/SetText
+-- work as more auras appeared on the target.
+local timerUpdater = CreateFrame("Frame")
+local activeReadables = {}
+local activeCount = 0
+
+timerUpdater.elapsed = 0
+timerUpdater:Hide()
+
+local function DeactivateReadable(readable)
+  if not readable then return end
+
+  local index = readable.activeIndex
+  if index then
+    local last = activeReadables[activeCount]
+    activeReadables[index] = last
+    if last and last ~= readable then
+      last.activeIndex = index
+    end
+    activeReadables[activeCount] = nil
+    activeCount = activeCount - 1
+    readable.activeIndex = nil
+  end
+
+  readable:Hide()
+
+  if activeCount == 0 then
+    timerUpdater.elapsed = 0
+    timerUpdater:Hide()
+  end
+end
+
+local function UpdateReadableText(readable, remaining)
+  local text = TimeConvert(remaining)
+  if readable.lastText ~= text then
+    readable.lastText = text
+    readable.text:SetText(text)
+  end
+end
+
+local function ActivateReadable(readable, start, duration, timeleft)
+  readable.start = start
+  readable.duration = duration
+
+  if not readable.activeIndex then
+    activeCount = activeCount + 1
+    activeReadables[activeCount] = readable
+    readable.activeIndex = activeCount
+    timerUpdater:Show()
+  end
+
+  local parent = readable:GetParent()
+  if parent then
+    local alpha = parent:GetAlpha()
+    if readable.lastAlpha ~= alpha then
+      readable.lastAlpha = alpha
+      readable:SetAlpha(alpha)
+    end
+  end
+
+  UpdateReadableText(readable, timeleft)
+  readable:Show()
+end
+
+timerUpdater:SetScript("OnUpdate", function()
+  this.elapsed = this.elapsed + arg1
+  if this.elapsed < .1 then return end
+  this.elapsed = 0
+
+  local now = GetTime()
+  local i = activeCount
+  while i >= 1 do
+    local readable = activeReadables[i]
+    local parent = readable and readable:GetParent()
+
+    if not readable or not parent then
+      if readable then DeactivateReadable(readable) end
+    else
+      local remaining = readable.duration - (now - readable.start)
+      if remaining >= 0 then
+        local alpha = parent:GetAlpha()
+        if readable.lastAlpha ~= alpha then
+          readable.lastAlpha = alpha
+          readable:SetAlpha(alpha)
+        end
+        UpdateReadableText(readable, remaining)
+      else
+        DeactivateReadable(readable)
+      end
+    end
+
+    i = i - 1
+  end
+end)
+
 local function CreateTextCooldown(cooldown)
   if cooldown.readable then return cooldown.readable end
 
@@ -87,24 +183,6 @@ local function CreateTextCooldown(cooldown)
 
   cooldown.readable.text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
   cooldown.readable.text:SetPoint("CENTER", cooldown.readable, "CENTER", 0, 0)
-  cooldown.readable:SetScript("OnUpdate", function()
-    this.elapsed = (this.elapsed or 0) + arg1
-    if this.elapsed < .1 then return end
-    this.elapsed = 0
-
-    local parent = this:GetParent()
-    if not parent then this:Hide() return end
-
-    -- fix own alpha value (should be inherited, but somehow isn't always)
-    this:SetAlpha(parent:GetAlpha())
-
-    local remaining = this.duration - (GetTime() - this.start)
-    if remaining >= 0 then
-      this.text:SetText(TimeConvert(remaining))
-    else
-      this:Hide()
-    end
-  end)
 
   return cooldown.readable
 end
@@ -138,9 +216,14 @@ module.enable = function(self)
           dCount:SetPoint("BOTTOMRIGHT", "TargetFrameDebuff" .. i, "BOTTOMRIGHT", 6, -3)
         end
         if stacks and stacks > 1 then
-          dCount:SetText("|c0000ff3b" .. stacks)
+          local stackText = "|c0000ff3b" .. stacks
+          if dCount.shaguStackText ~= stackText then
+            dCount.shaguStackText = stackText
+            dCount:SetText(stackText)
+          end
           dCount:Show()
         else
+          dCount.shaguStackText = nil
           dCount:Hide()
         end
       end
@@ -154,16 +237,22 @@ module.enable = function(self)
       if button and effect and duration and timeleft and timeleft >= 0 then
         local start = now + timeleft - duration
         local readable = CreateTextCooldown(button.cd)
-        CooldownFrame_SetTimer(button.cd, start, duration, 1)
-        readable.start = start
-        readable.duration = duration
-        readable.elapsed = 0
-        readable.text:SetText(TimeConvert(timeleft))
-        readable:Show()
+
+        if button.cd.shaguStart ~= start or button.cd.shaguDuration ~= duration then
+          button.cd.shaguStart = start
+          button.cd.shaguDuration = duration
+          CooldownFrame_SetTimer(button.cd, start, duration, 1)
+        end
+
+        ActivateReadable(readable, start, duration, timeleft)
         button.cd:Show()
       elseif button then
-        CooldownFrame_SetTimer(button.cd,0,0,0)
-        if button.cd.readable then button.cd.readable:Hide() end
+        if button.cd.shaguDuration then
+          button.cd.shaguStart = nil
+          button.cd.shaguDuration = nil
+          CooldownFrame_SetTimer(button.cd, 0, 0, 0)
+        end
+        if button.cd.readable then DeactivateReadable(button.cd.readable) end
       end
     end
   end
