@@ -13,13 +13,25 @@ local extra_methods = {
   "Find", "Line", "Text", "List",
 }
 
+-- GameTooltipTemplate creates named FontStrings that persist for the lifetime
+-- of the scanner. Cache each side once it exists instead of rebuilding the
+-- global name and looking it up for every tooltip read.
+local function getLine(obj, side, index)
+  local cache = side == "Left" and obj.ShaguTweaksLeftLines or obj.ShaguTweaksRightLines
+  local line = cache[index]
+  if line then return line end
+
+  line = _G[obj.ShaguTweaksScannerName .. "Text" .. side .. index]
+  if line then cache[index] = line end
+  return line
+end
+
 local getFontString = function(obj)
-  local name = obj:GetName()
-  local r, g, b, color, a
+  local r, g, b, a
   local text, segment
 
   for i=1, obj:NumLines() do
-    local left = _G[string.format("%sTextLeft%d",name,i)]
+    local left = getLine(obj, "Left", i)
     segment = left and left:IsVisible() and left:GetText()
     segment = segment and segment ~= "" and segment or nil
     if segment then
@@ -32,10 +44,9 @@ local getFontString = function(obj)
 end
 
 local getText = function(obj)
-  local name = obj:GetName()
   local text = {}
   for i=1, obj:NumLines() do
-    local left, right = _G[string.format("%sTextLeft%d",name,i)], _G[string.format("%sTextRight%d",name,i)]
+    local left, right = getLine(obj, "Left", i), getLine(obj, "Right", i)
     left = left and left:IsVisible() and left:GetText()
     right = right and right:IsVisible() and right:GetText()
     left = left and left ~= "" and left or nil
@@ -48,9 +59,8 @@ local getText = function(obj)
 end
 
 local findText = function(obj, text, exact)
-  local name = obj:GetName()
   for i=1, obj:NumLines() do
-    local left, right = _G[string.format("%sTextLeft%d",name,i)], _G[string.format("%sTextRight%d",name,i)]
+    local left, right = getLine(obj, "Left", i), getLine(obj, "Right", i)
     left = left and left:IsVisible() and left:GetText()
     right = right and right:IsVisible() and right:GetText()
     if exact then
@@ -75,9 +85,8 @@ local findText = function(obj, text, exact)
 end
 
 local lineText = function(obj, line)
-  local name = obj:GetName()
   if line <= obj:NumLines() then
-    local left, right = _G[string.format("%sTextLeft%d",name,line)], _G[string.format("%sTextRight%d",name,line)]
+    local left, right = getLine(obj, "Left", line), getLine(obj, "Right", line)
     left = left and left:IsVisible() and left:GetText()
     right = right and right:IsVisible() and right:GetText()
 
@@ -88,13 +97,12 @@ local lineText = function(obj, line)
 end
 
 local findColor = function(obj, r,g,b)
-  local name = obj:GetName()
   if type(r) == "table" then
     r,g,b = r.r or r[1], r.g or r[2], r.b or r[3]
   end
   for i=1, obj:NumLines() do
     local tr, tg, tb
-    local left, right = _G[string.format("%sTextLeft%d",name,i)], _G[string.format("%sTextRight%d",name,i)]
+    local left, right = getLine(obj, "Left", i), getLine(obj, "Right", i)
     if left and left:IsVisible() then
       tr, tg, tb = left:GetTextColor()
       tr, tg, tb = round(tr,1), round(tg,1), round(tb,1)
@@ -114,6 +122,9 @@ end
 
 libtipscan._registry = setmetatable({},{__index = function(t,k)
   local v = CreateFrame("GameTooltip", string.format("%s%s",baseName,k), nil, "GameTooltipTemplate")
+  v.ShaguTweaksScannerName = v:GetName()
+  v.ShaguTweaksLeftLines = {}
+  v.ShaguTweaksRightLines = {}
   v:SetOwner(WorldFrame,"ANCHOR_NONE")
   v:SetScript("OnHide", function ()
     this:SetOwner(WorldFrame,"ANCHOR_NONE")
@@ -133,29 +144,31 @@ libtipscan._registry = setmetatable({},{__index = function(t,k)
   function v:Line(line)
     return lineText(self, line)
   end
-  for _,method in ipairs(methods) do
-    local method = method
+  for i = 1, table.getn(methods) do
+    local method = methods[i]
     local old = v[method]
-    v[method] = function(v, a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
-      v:ClearLines()
-      return old(v, a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+    if type(old) == "function" then
+      v[method] = function(v, a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+        v:ClearLines()
+        return old(v, a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+      end
     end
   end
   function v:List()
     table.sort(methods)
-    for _,method in ipairs(methods) do
-      print(method)
+    for i = 1, table.getn(methods) do
+      print(methods[i])
     end
-    for _,method in ipairs(extra_methods) do
-      print(method)
+    for i = 1, table.getn(extra_methods) do
+      print(extra_methods[i])
     end
   end
   rawset(t,k,v)
   return v
 end})
 
-function libtipscan:GetScanner(type)
-  local scanner = self._registry[type]
+function libtipscan:GetScanner(key)
+  local scanner = self._registry[key]
   scanner:ClearLines()
   return scanner
 end
