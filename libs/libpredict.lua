@@ -128,16 +128,18 @@ function libpredict:ParseChatMessage(sender, msg, comm)
     msgtype, target, heal, time = libpredict:ParseComm(sender, msg)
   elseif comm == "CTRA" then
     local _, _, cmd, ctratarget = string.find(msg, "(%a+)%s?([^#]*)")
-    if cmd and ctratarget and cmd == "RES" and ctratarget ~= "" and ctratarget ~= UNKNOWN then
+    if cmd == "RES" and ctratarget and ctratarget ~= "" and ctratarget ~= UNKNOWN then
       msgtype = "Ress"
       target = ctratarget
+    elseif cmd == "RESNO" then
+      msgtype = "RessStop"
     end
   end
 
   if msgtype == "Stop" and sender then
     libpredict:HealStop(sender)
     return
-  elseif ( msg == "RessStop" or msg == "RESNO" ) and sender then
+  elseif msgtype == "RessStop" and sender then
     libpredict:RessStop(sender)
     return
   elseif msgtype == "Delay" and time then
