@@ -1,6 +1,4 @@
-local _G = ShaguTweaks.GetGlobalEnv()
 local GetExpansion = ShaguTweaks.GetExpansion
-local GetUnitData = ShaguTweaks.GetUnitData
 
 local NAMEPLATE_OBJECTORDER = { "border", "glow", "name", "level", "levelicon", "raidicon" }
 local NAMEPLATE_TYPE = "Button"
@@ -24,11 +22,17 @@ end
 local registry = {}
 local initialized = 0
 local parentcount, childs, plate
-ShaguTweaks.libnameplate = CreateFrame("Frame", nil, UIParent)
-ShaguTweaks.libnameplate.OnInit = {}
-ShaguTweaks.libnameplate.OnShow = {}
-ShaguTweaks.libnameplate.OnUpdate = {}
-ShaguTweaks.libnameplate:SetScript("OnUpdate", function()
+local libnameplate = CreateFrame("Frame", nil, UIParent)
+ShaguTweaks.libnameplate = libnameplate
+libnameplate.OnInit = {}
+libnameplate.OnShow = {}
+libnameplate.OnUpdate = {}
+
+local onInit = libnameplate.OnInit
+local onShow = libnameplate.OnShow
+local onUpdate = libnameplate.OnUpdate
+
+libnameplate:SetScript("OnUpdate", function()
   parentcount = WorldFrame:GetNumChildren()
   if initialized < parentcount then
     childs = { WorldFrame:GetChildren() }
@@ -37,36 +41,40 @@ ShaguTweaks.libnameplate:SetScript("OnUpdate", function()
 
       if IsNamePlate(plate) and not registry[plate] then
         plate.healthbar = plate:GetChildren()
-        for i, object in pairs({plate:GetRegions()}) do
-          if plate and NAMEPLATE_OBJECTORDER[i] then
-            plate[NAMEPLATE_OBJECTORDER[i]] = object
+
+        local regions = { plate:GetRegions() }
+        for index = 1, table.getn(regions) do
+          local key = NAMEPLATE_OBJECTORDER[index]
+          if key then
+            plate[key] = regions[index]
           end
         end
 
-        -- run OnInit functions
-        for id, func in pairs(ShaguTweaks.libnameplate.OnInit) do
-          func(plate)
+        -- Callback lists are arrays populated with table.insert(). Iterate them
+        -- numerically: OnUpdate runs once per rendered frame on every visible
+        -- nameplate, so avoid the generic pairs() iterator in this hot path.
+        for index = 1, table.getn(onInit) do
+          onInit[index](plate)
         end
 
-        -- register OnUpdate functions
+        -- Preserve the native/addon scripts and append ShaguTweaks callbacks.
         local oldUpdate = plate:GetScript("OnUpdate")
         plate:SetScript("OnUpdate", function(self, elapsed)
           if oldUpdate then oldUpdate(self, elapsed) end
-          for id, func in pairs(ShaguTweaks.libnameplate.OnUpdate) do
-            func(self, elapsed)
+          for index = 1, table.getn(onUpdate) do
+            onUpdate[index](self, elapsed)
           end
         end)
 
-        -- register OnShow functions
         local oldShow = plate:GetScript("OnShow")
         plate:SetScript("OnShow", function(self)
           if oldShow then oldShow(self) end
-          for id, func in pairs(ShaguTweaks.libnameplate.OnShow) do
-            func(self)
+          for index = 1, table.getn(onShow) do
+            onShow[index](self)
           end
         end)
 
-        registry[plate] = plate
+        registry[plate] = true
       end
     end
 
