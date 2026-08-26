@@ -173,7 +173,7 @@ local function UpdateTooltip()
   local reaction = UnitReaction(unit, "player")
   local pvptitle = name and gsub(pvpname or name, " " .. name, "", 1) or nil
 
-  -- Keep the health estimator bound to the unit actually represented by the
+  -- Keep the status display bound to the unit actually represented by the
   -- tooltip, not merely whichever unit happened to be mouseover last.
   if statusbar then
     statusbar.name = name
@@ -329,8 +329,8 @@ module.enable = function(self)
   end)
 
   -- Keep the lightweight OnUpdate because the vanilla tooltip statusbar can
-  -- change without a dedicated Lua event. Skip the expensive estimator/string
-  -- work entirely while its inputs are unchanged.
+  -- change without a dedicated Lua event. Skip string work entirely while its
+  -- inputs are unchanged.
   statusbar:SetScript("OnUpdate", function()
     local hp = GameTooltipStatusBar:GetValue()
     local _, hpmax = GameTooltipStatusBar:GetMinMaxValues()
@@ -345,18 +345,11 @@ module.enable = function(self)
     this.lastName = this.name
     this.lastLevel = this.level
 
-    local rhp, rhpmax, estimated
-
-    if hpmax > 100 or (round(hpmax/100*hp) ~= hp) then
-      rhp, rhpmax = hp, hpmax
-    else
-      rhp, rhpmax, estimated = ShaguTweaks.libhealth:GetUnitHealthByName(this.name, this.level, tonumber(hp), tonumber(hpmax))
-    end
-
-    if estimated or hpmax > 100 or round(hpmax/100*hp) ~= hp then
-      GameTooltipStatusBar.backdrop.health:SetText(string.format("%s / %s", Abbreviate(rhp, true), Abbreviate(rhpmax, true)))
+    local hasRealHealth = hpmax > 100 or (round(hpmax / 100 * hp) ~= hp)
+    if hasRealHealth then
+      GameTooltipStatusBar.backdrop.health:SetText(string.format("%s / %s", Abbreviate(hp, true), Abbreviate(hpmax, true)))
     elseif hpmax > 0 then
-      GameTooltipStatusBar.backdrop.health:SetText(string.format("%s%%", ceil(hp/hpmax*100)))
+      GameTooltipStatusBar.backdrop.health:SetText(string.format("%s%%", ceil(hp / hpmax * 100)))
     else
       GameTooltipStatusBar.backdrop.health:SetText("")
     end
