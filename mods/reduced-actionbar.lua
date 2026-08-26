@@ -115,14 +115,17 @@ module.enable = function(self)
   MultiBarBottomRight:SetPoint("BOTTOM", MultiBarBottomLeft, "TOP", 0, 5)
 
   -- reload custom frame positions after original frame manage runs
-  local hookUIParent_ManageFramePositions = UIParent_ManageFramePositions
-  UIParent_ManageFramePositions = function(a1, a2, a3)
-    -- run original function
-    hookUIParent_ManageFramePositions(a1, a2, a3)
+  local function UpdateActionBarPositions()
+    local expVisible = MainMenuExpBar:IsVisible()
+    local reputationVisible = ReputationWatchBar:IsVisible()
+    local bottomLeftVisible = MultiBarBottomLeft:IsVisible()
+    local bottomRightVisible = MultiBarBottomRight:IsVisible()
+    local shapeshiftVisible = ShapeshiftBarFrame:IsVisible()
+    local petVisible = PetActionBarFrame:IsVisible()
 
     -- move top actionbar if xp or reputation is tracked
     MultiBarBottomLeft:ClearAllPoints()
-    if MainMenuExpBar:IsVisible() or ReputationWatchBar:IsVisible() then
+    if expVisible or reputationVisible then
       local anchor = GetWatchedFactionInfo() and ReputationWatchBar or MainMenuExpBar
       MultiBarBottomLeft:SetPoint("BOTTOM", anchor, "TOP", 2, 3)
     else
@@ -132,34 +135,38 @@ module.enable = function(self)
     -- move pet actionbar above other actionbars
     PetActionBarFrame:ClearAllPoints()
     local anchor = MainMenuBarArtFrame
-    anchor = MultiBarBottomLeft:IsVisible() and MultiBarBottomLeft or anchor
-    anchor = MultiBarBottomRight:IsVisible() and MultiBarBottomRight or anchor
-    anchor = ShapeshiftBarFrame:IsVisible() and ShapeshiftBarFrame or anchor
+    anchor = bottomLeftVisible and MultiBarBottomLeft or anchor
+    anchor = bottomRightVisible and MultiBarBottomRight or anchor
+    anchor = shapeshiftVisible and ShapeshiftBarFrame or anchor
     PetActionBarFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 20, 4)
 
     -- ShapeshiftBarFrame
     ShapeshiftBarFrame:ClearAllPoints()
     local offset = 0
     local anchor = ActionButton1
-    anchor = MultiBarBottomLeft:IsVisible() and MultiBarBottomLeft or anchor
-    anchor = MultiBarBottomRight:IsVisible() and MultiBarBottomRight or anchor
+    anchor = bottomLeftVisible and MultiBarBottomLeft or anchor
+    anchor = bottomRightVisible and MultiBarBottomRight or anchor
 
-    offset = anchor == ActionButton1 and ( MainMenuExpBar:IsVisible() or ReputationWatchBar:IsVisible() ) and 6 or 0
+    offset = anchor == ActionButton1 and (expVisible or reputationVisible) and 6 or 0
     offset = anchor == ActionButton1 and offset + 4 or offset
     ShapeshiftBarFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 8, 4 + offset)
 
     -- move castbar ontop of other bars
     local anchor = MainMenuBarArtFrame
-    anchor = MultiBarBottomLeft:IsVisible() and MultiBarBottomLeft or anchor
-    anchor = MultiBarBottomRight:IsVisible() and MultiBarBottomRight or anchor
-    local pet_offset = PetActionBarFrame:IsVisible() and 40 or 0
-    local stance_offset = ShapeshiftBarFrame:IsVisible() and 40 or 0
+    anchor = bottomLeftVisible and MultiBarBottomLeft or anchor
+    anchor = bottomRightVisible and MultiBarBottomRight or anchor
+    local pet_offset = petVisible and 40 or 0
+    local stance_offset = shapeshiftVisible and 40 or 0
     CastingBarFrame:SetPoint("BOTTOM", anchor, "TOP", 0, 10 + pet_offset + stance_offset)
   end
 
+  hooksecurefunc("UIParent_ManageFramePositions", UpdateActionBarPositions)
+
   -- restore frame positions when UIParent becomes visible
   local restore = CreateFrame("Frame", nil, UIParent)
-  restore:SetScript("OnShow", UIParent_ManageFramePositions)
+  restore:SetScript("OnShow", function()
+    UIParent_ManageFramePositions()
+  end)
 
   -- enforce pet actionbar offset after pet actionbar becomes visible
   hooksecurefunc("ShowPetActionBar", function()
