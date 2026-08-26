@@ -1,4 +1,3 @@
-local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
 
 local module = ShaguTweaks:register({
@@ -9,6 +8,11 @@ local module = ShaguTweaks:register({
 })
 
 module.enable = function(self)
-  error = function() return end
-  seterrorhandler(error)
+  -- Silence the client's error output without replacing Lua's global error()
+  -- function. Addons may rely on error() to abort invalid execution paths.
+  if not self.errorHandler then
+    self.errorHandler = function() end
+  end
+
+  seterrorhandler(self.errorHandler)
 end
