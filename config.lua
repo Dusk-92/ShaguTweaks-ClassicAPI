@@ -161,22 +161,8 @@ settings.load = function(self)
     previous = settings.category[category]
 
     -- create category title collapse button
-    local collapse = function(frame, expand)
-      -- Direct setup calls pass the category frame itself, while OnClick can
-      -- pass the clicked button on some Turtle-like clients. Resolve both
-      -- forms without depending on one specific script-callback convention.
-      local parent
-      if expand then
-        parent = frame
-      elseif frame and frame.parent then
-        parent = frame.parent
-      elseif this and this.parent then
-        parent = this.parent
-      else
-        parent = frame
-      end
-
-      if not parent then return end
+    local collapse = function(parent, expand)
+      if not parent or not parent.button then return end
       local buttons = parent.buttons or {}
 
       if expand then
@@ -214,14 +200,18 @@ settings.load = function(self)
     settings.category[category].button:SetWidth(22)
     settings.category[category].button:SetHeight(22)
     settings.category[category].button.parent = settings.category[category]
-    settings.category[category].button:SetScript("OnClick", collapse)
+    settings.category[category].button:SetScript("OnClick", function()
+      collapse(this.parent)
+    end)
 
     settings.category[category].title = settings.category[category].title or CreateFrame("Button", nil, settings.container)
     settings.category[category].title:SetPoint("TOPLEFT", settings.category[category], "TOPLEFT", 22, entrysize-4)
     settings.category[category].title:SetWidth(200)
     settings.category[category].title:SetHeight(entrysize)
     settings.category[category].title.parent = settings.category[category]
-    settings.category[category].title:SetScript("OnClick", collapse)
+    settings.category[category].title:SetScript("OnClick", function()
+      collapse(this.parent)
+    end)
 
     settings.category[category]:SetBackdrop({
       bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
