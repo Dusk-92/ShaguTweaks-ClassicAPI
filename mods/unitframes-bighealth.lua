@@ -68,13 +68,17 @@ module.enable = function(self)
     -- the matching Big Health texture instead of replacing the global function.
     hooksecurefunc("TargetFrame_CheckClassification", UpdateTargetClassificationTexture)
 
-    -- move text strings a bit higher
+    -- Keep status-bar text inside the lower half of the enlarged health bars.
+    -- The stock Turtle-style text position sits too high once Big Health grows
+    -- the bars upward and can overlap the unit name.
     if PlayerFrameHealthBar.TextString then
-      PlayerFrameHealthBar.TextString:SetPoint("TOP", PlayerFrameHealthBar, "BOTTOM", 0, 23)
+      PlayerFrameHealthBar.TextString:ClearAllPoints()
+      PlayerFrameHealthBar.TextString:SetPoint("CENTER", PlayerFrameHealthBar, "CENTER", 0, -7)
     end
 
     if TargetFrameHealthBar.TextString then
-      TargetFrameHealthBar.TextString:SetPoint("TOP", TargetFrameHealthBar, "BOTTOM", -2, 23)
+      TargetFrameHealthBar.TextString:ClearAllPoints()
+      TargetFrameHealthBar.TextString:SetPoint("CENTER", TargetFrameHealthBar, "CENTER", -2, -7)
     end
 
     local playerSetStatusBarColor = PlayerFrameHealthBar.SetStatusBarColor
