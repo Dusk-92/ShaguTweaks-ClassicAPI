@@ -162,7 +162,22 @@ settings.load = function(self)
 
     -- create category title collapse button
     local collapse = function(frame, expand)
-      local parent = frame or this.parent
+      -- Direct setup calls pass the category frame itself, while OnClick can
+      -- pass the clicked button on some Turtle-like clients. Resolve both
+      -- forms without depending on one specific script-callback convention.
+      local parent
+      if expand then
+        parent = frame
+      elseif frame and frame.parent then
+        parent = frame.parent
+      elseif this and this.parent then
+        parent = this.parent
+      else
+        parent = frame
+      end
+
+      if not parent then return end
+      local buttons = parent.buttons or {}
 
       if expand then
         local height = parent.collapse or parent:GetHeight()
@@ -174,7 +189,7 @@ settings.load = function(self)
         parent.collapse = height
         parent:SetHeight(1)
 
-        for button in pairs(parent.buttons) do button:Hide() end
+        for button in pairs(buttons) do button:Hide() end
         parent.button:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
         parent.button:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down")
         parent.button:SetDisabledTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Disabled")
@@ -185,7 +200,7 @@ settings.load = function(self)
         parent.collapse = nil
         parent:SetHeight(height)
 
-        for button in pairs(parent.buttons) do button:Show() end
+        for button in pairs(buttons) do button:Show() end
         parent.button:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
         parent.button:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Down")
         parent.button:SetDisabledTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Disabled")
