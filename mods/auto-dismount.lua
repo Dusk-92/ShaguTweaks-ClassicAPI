@@ -6,6 +6,7 @@ local module = ShaguTweaks:register({
   title = T["Auto Dismount"],
   description = T["Automatically dismounts whenever a spell is casted."],
   expansions = { ["vanilla"] = true },
+  category = T["Action Bar"],
   enabled = true,
 })
 

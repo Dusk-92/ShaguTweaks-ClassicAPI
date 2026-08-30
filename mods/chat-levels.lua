@@ -8,7 +8,7 @@ local module = ShaguTweaks:register({
     title = T["Chat Levels"],
     description = T["Shows player levels in chat."],
     expansions = { ["vanilla"] = true },
-    category = T["Social & Chat"],
+    category = T["Chat & Social"],
     enabled = nil,
 })
 

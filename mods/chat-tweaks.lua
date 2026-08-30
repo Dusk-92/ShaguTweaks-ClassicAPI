@@ -10,7 +10,7 @@ local module = ShaguTweaks:register({
   title = T["Chat Tweaks"],
   description = T["Improves chat with mouse wheel scrolling, sticky channels, arrow-up repeat, shortened names, item link preview, Alt/Ctrl-click to invite/target, chat history, and clickable URLs."],
   expansions = { ["vanilla"] = true },
-  category = T["Social & Chat"],
+  category = T["Chat & Social"],
   enabled = true,
   order = 60,
 })

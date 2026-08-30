@@ -5,6 +5,7 @@ local module = ShaguTweaks:register({
   title = T["Auto Stance"],
   description = T["Automatically switch to the required warrior or druid stance on spell cast."],
   expansions = { ["vanilla"] = true },
+  category = T["Action Bar"],
   enabled = true,
 })
 

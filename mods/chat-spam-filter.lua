@@ -5,7 +5,7 @@ local module = ShaguTweaks:register({
   title = T["Chat Spam Filter"],
   description = T["Hides repeated messages in say/yell/channel chat (70s cooldown per unique message). Also suppresses BigWigs cast spam and #showtooltip errors."],
   expansions = { ["vanilla"] = true },
-  category = T["Social & Chat"],
+  category = T["Chat & Social"],
   enabled = nil,
 })
 

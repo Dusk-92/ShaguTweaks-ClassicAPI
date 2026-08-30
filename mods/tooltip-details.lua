@@ -287,7 +287,7 @@ local module = ShaguTweaks:register({
   title = T["Tooltip Details"],
   description = T["Enriches unit tooltips with health, class color, guild name, rank, and current target."],
   expansions = { ["vanilla"] = true },
-  category = T["General"],
+  category = T["Tooltip & Items"],
   enabled = true,
   order = 50,
 })
