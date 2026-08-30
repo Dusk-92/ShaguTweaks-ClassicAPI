@@ -76,6 +76,7 @@ module.enable = function(self)
       PlayerFrameManaBar.TextString,
       TargetFrameHealthBar.TextString,
       TargetFrameManaBar.TextString,
+      _G.PlayerFrameAlternatePowerBarText,
       _G.TargetHPText,
       _G.TargetHPPercText,
     }
@@ -104,6 +105,14 @@ module.enable = function(self)
       self.valueTexts.playerMana = CreateValueText(PlayerFrameManaBar, PlayerFrameManaBar, 0)
       self.valueTexts.targetHealth = CreateValueText(TargetFrameHealthBar, TargetFrameHealthBar, -7)
       self.valueTexts.targetMana = CreateValueText(TargetFrameManaBar, TargetFrameManaBar, 0)
+
+      if _G.PlayerFrameAlternatePowerBar then
+        self.valueTexts.playerAlternatePower = CreateValueText(
+          _G.PlayerFrameAlternatePowerBar,
+          _G.PlayerFrameAlternatePowerBar,
+          0
+        )
+      end
     end
 
     local function UpdateValueText(text, unit, power)
@@ -172,41 +181,37 @@ module.enable = function(self)
     UpdateUnitValues("player")
     UpdateUnitValues("target")
 
-    -- DruidManaBar is a separate TextStatusBar used while shapeshifted.
-    -- Its own update path writes "current / max". Post-hook the shared text
-    -- formatter and only alter that one named bar, so load order does not matter.
-    local function UpdateDruidManaBarText(bar)
-      if not bar or not bar.GetName or bar:GetName() ~= "DruidManaBar" then return end
+    -- Turtle WoW exposes a native alternate power bar for druids while
+    -- shapeshifted. It stores caster mana separately from the active rage/energy
+    -- value. Keep the native bar and only replace its text presentation.
+    local alternatePowerBar = _G.PlayerFrameAlternatePowerBar
+    if alternatePowerBar and self.valueTexts.playerAlternatePower then
+      local function UpdateAlternatePowerValue()
+        local text = self.valueTexts.playerAlternatePower
 
-      local text = bar.text or bar.TextString
-      if not text then return end
+        if not alternatePowerBar:IsShown() then
+          text:Hide()
+          return
+        end
 
-      if not bar.ShaguTweaksBigHealthText then
-        bar.ShaguTweaksBigHealthText = true
-        text:SetAlpha(1)
-        text:SetFontObject("GameFontWhite")
-        text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        text:SetHeight(32)
-        text:ClearAllPoints()
-        text:SetPoint("CENTER", bar, "CENTER", 0, 0)
-        text:SetJustifyH("CENTER")
-        text:SetTextColor(1, 1, 1, 1)
+        local value = alternatePowerBar:GetValue() or 0
+        local _, max = alternatePowerBar:GetMinMaxValues()
+
+        if not max or max <= 0 then
+          text:Hide()
+          return
+        end
+
+        text:SetText(tostring(math.floor(value + 0.5)))
+        text:Show()
       end
 
-      local value = bar:GetValue() or 0
-      text:SetText(tostring(math.floor(value + 0.5)))
-      text:Show()
-    end
+      -- Turtle updates this bar from UnitFrameManaBar_Update using the second
+      -- UnitMana / UnitManaMax return values. Refresh after that native write.
+      hooksecurefunc(alternatePowerBar, "SetValue", UpdateAlternatePowerValue)
+      hooksecurefunc(alternatePowerBar, "Show", UpdateAlternatePowerValue)
 
-    hooksecurefunc("TextStatusBar_UpdateTextString", function(textStatusBar)
-      UpdateDruidManaBarText(textStatusBar or this)
-    end)
-
-    -- Apply immediately when the bar already exists; otherwise its first normal
-    -- TextStatusBar update will be caught by the hook above.
-    local druidManaBar = getglobal and getglobal("DruidManaBar") or nil
-    if druidManaBar then
-      UpdateDruidManaBarText(druidManaBar)
+      UpdateAlternatePowerValue()
     end
 
     local playerSetStatusBarColor = PlayerFrameHealthBar.SetStatusBarColor
