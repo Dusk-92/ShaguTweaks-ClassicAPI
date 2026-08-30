@@ -175,7 +175,7 @@ module.enable = function(self)
     -- DruidManaBar is a separate addon/frame used to keep mana visible while
     -- shapeshifted. Its TextStatusBar normally renders "current / max", so give
     -- it the same current-value-only presentation as Big Health.
-    ShaguTweaks.HookAddonOrVariable("DruidManaBar", function()
+    local function SetupDruidManaBar()
       local bar = _G.DruidManaBar
       if not bar then return end
 
@@ -243,7 +243,16 @@ module.enable = function(self)
       end
 
       UpdateDruidManaText()
-    end)
+    end
+
+    -- Big Health installs this compatibility one frame after module setup.
+    -- DruidManaBar may already be loaded by then, so handle the existing frame
+    -- immediately instead of waiting for load events that have already fired.
+    if _G.DruidManaBar then
+      SetupDruidManaBar()
+    else
+      ShaguTweaks.HookAddonOrVariable("DruidManaBar", SetupDruidManaBar)
+    end
 
     local playerSetStatusBarColor = PlayerFrameHealthBar.SetStatusBarColor
     local targetSetStatusBarColor = TargetFrameHealthBar.SetStatusBarColor
