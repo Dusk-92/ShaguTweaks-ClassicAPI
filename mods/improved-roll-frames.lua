@@ -4,7 +4,7 @@ local module = ShaguTweaks:register({
     title = T["Improved Roll Frames"],
     description = T["Smaller roll frames with roll tracking."],
     expansions = { ["vanilla"] = true },
-    category = T["General"],
+    category = T["Loot"],
     enabled = nil,
   })
 

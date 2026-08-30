@@ -42,6 +42,7 @@ Settings: **Esc → Advanced Options**.
 - Free Slots
 - Improved Castbar
 - Item Rarity Borders
+- Item Rarity Glows
 - Movable Unit Frames
 - Nameplate Class Colors
 - Nameplate Castbar
@@ -56,14 +57,15 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 
 ## ⚙️ Modules
 
-### Action Bar & Combat
+### Action Bar
 
 - Auto Dismount
 - Auto Stance
 - Actionbar Range Color
 - Cooldown Numbers
+- Hide Gryphons
 - Improved Castbar
-- No Toggle
+- No Toggle Auto-Attack
 - Reduced Actionbar
 
 ### Unit Frames
@@ -83,11 +85,12 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 - Nameplate Class Colors
 - Nameplate Castbar
 
-### Items & Tooltips
+### Tooltip & Items
 
 - Equip Compare
 - Free Slots
 - Item Rarity Borders
+- Item Rarity Glows
 - Sell Junk
 - Tooltip Details
 - Vendor Values
@@ -111,16 +114,23 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 - WorldMap Coordinates
 - WorldMap Window
 
-### General
+### Loot
+
+- Improved Roll Frames
+- Loot Cursor
+
+### Interface
 
 - Darkened UI
 - Hide Errors
-- Hide Gryphons
-- Improved Roll Frames
-- Loot Cursor
-- Skip Gossip Text
 - Smaller Error Frame
 - XP Bar Text
+
+### General
+
+- Super WoW Compatibility
+- Turtle WoW Compatibility
+- Skip Gossip Text
 
 ## 🔧 Compatibility
 

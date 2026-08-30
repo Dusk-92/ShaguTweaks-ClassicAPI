@@ -7,7 +7,7 @@ local module = ShaguTweaks:register({
   title = T["WorldMap Window"],
   description = T["Turns the world map into a movable window. The map can be scaled with <Ctrl> + Mousewheel."],
   expansions = { ["vanilla"] = true },
-  category = T["World & MiniMap"],
+  category = T["Minimap & World Map"],
   enabled = true,
 })
 

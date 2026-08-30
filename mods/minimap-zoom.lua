@@ -4,7 +4,7 @@ local module = ShaguTweaks:register({
   title = T["Enlarged Minimap"],
   description = T["Increases the minimap size and shifts buff icons left to prevent overlap."],
   expansions = { ["vanilla"] = true },
-  category = T["World & MiniMap"],
+  category = T["Minimap & World Map"],
   enabled = false,
   order = 73,
   config = {

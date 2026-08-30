@@ -4,6 +4,7 @@ local module = ShaguTweaks:register({
   title = T["Hide Errors"],
   description = T["Hides and ignores all Lua errors produced by broken addons."],
   expansions = { ["vanilla"] = true },
+  category = T["Interface"],
   enabled = nil,
 })
 

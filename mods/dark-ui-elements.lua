@@ -8,6 +8,7 @@ local module = ShaguTweaks:register({
   title = T["Darkened UI"],
   description = T["Turns the entire interface into darker colors."],
   expansions = { ["vanilla"] = true },
+  category = T["Interface"],
   enabled = nil,
   config = {
     ["darkmode.color"] = { r = .3, g = .3, b = .3, a = .9 }
