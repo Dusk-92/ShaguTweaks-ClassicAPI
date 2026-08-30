@@ -172,86 +172,41 @@ module.enable = function(self)
     UpdateUnitValues("player")
     UpdateUnitValues("target")
 
-    -- DruidManaBar is a separate addon/frame used to keep mana visible while
-    -- shapeshifted. Its TextStatusBar normally renders "current / max", so give
-    -- it the same current-value-only presentation as Big Health.
-    local function SetupDruidManaBar()
-      local bar = _G.DruidManaBar
-      if not bar then return end
+    -- DruidManaBar is a separate TextStatusBar used while shapeshifted.
+    -- Its own update path writes "current / max". Post-hook the shared text
+    -- formatter and only alter that one named bar, so load order does not matter.
+    local function UpdateDruidManaBarText(bar)
+      if not bar or not bar.GetName or bar:GetName() ~= "DruidManaBar" then return end
 
-      if bar.text then
-        bar.text:SetAlpha(0)
-      elseif bar.TextString then
-        bar.TextString:SetAlpha(0)
+      local text = bar.text or bar.TextString
+      if not text then return end
+
+      if not bar.ShaguTweaksBigHealthText then
+        bar.ShaguTweaksBigHealthText = true
+        text:SetAlpha(1)
+        text:SetFontObject("GameFontWhite")
+        text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        text:SetHeight(32)
+        text:ClearAllPoints()
+        text:SetPoint("CENTER", bar, "CENTER", 0, 0)
+        text:SetJustifyH("CENTER")
+        text:SetTextColor(1, 1, 1, 1)
       end
 
-      if not self.druidManaText then
-        self.druidManaText = bar:CreateFontString(nil, "OVERLAY", "GameFontWhite")
-        self.druidManaText:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        self.druidManaText:SetHeight(32)
-        self.druidManaText:SetPoint("CENTER", bar, "CENTER", 0, 0)
-        self.druidManaText:SetJustifyH("CENTER")
-        self.druidManaText:SetTextColor(1, 1, 1, 1)
-      end
-
-      local function UpdateDruidManaText()
-        if not bar:IsShown() then
-          self.druidManaText:Hide()
-          return
-        end
-
-        local value
-        local max
-        if _G.DruidManaLib and _G.DruidManaLib.GetMana and _G.DruidManaLib.GetMaxMana then
-          value = _G.DruidManaLib:GetMana()
-          max = _G.DruidManaLib:GetMaxMana()
-        else
-          value = bar:GetValue()
-          local _, barMax = bar:GetMinMaxValues()
-          max = barMax
-        end
-
-        if not max or max <= 0 then
-          self.druidManaText:Hide()
-          return
-        end
-
-        self.druidManaText:SetText(tostring(value or 0))
-        self.druidManaText:Show()
-      end
-
-      if not self.druidManaEvents then
-        self.druidManaEvents = CreateFrame("Frame")
-        self.druidManaEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
-        self.druidManaEvents:RegisterEvent("PLAYER_AURAS_CHANGED")
-        self.druidManaEvents:RegisterEvent("UNIT_DISPLAYPOWER")
-        self.druidManaEvents:RegisterEvent("UNIT_MANA")
-        self.druidManaEvents:RegisterEvent("UNIT_MAXMANA")
-        self.druidManaEvents:SetScript("OnEvent", function()
-          if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_AURAS_CHANGED"
-            or not arg1 or arg1 == "player" then
-            UpdateDruidManaText()
-          end
-        end)
-      end
-
-      -- DruidManaBar can update after the shared event dispatch. Hook its value
-      -- write as the authoritative final refresh without polling every frame.
-      if not self.druidManaValueHooked and bar.SetValue then
-        self.druidManaValueHooked = true
-        hooksecurefunc(bar, "SetValue", UpdateDruidManaText)
-      end
-
-      UpdateDruidManaText()
+      local value = bar:GetValue() or 0
+      text:SetText(tostring(math.floor(value + 0.5)))
+      text:Show()
     end
 
-    -- Big Health installs this compatibility one frame after module setup.
-    -- DruidManaBar may already be loaded by then, so handle the existing frame
-    -- immediately instead of waiting for load events that have already fired.
-    if _G.DruidManaBar then
-      SetupDruidManaBar()
-    else
-      ShaguTweaks.HookAddonOrVariable("DruidManaBar", SetupDruidManaBar)
+    hooksecurefunc("TextStatusBar_UpdateTextString", function(textStatusBar)
+      UpdateDruidManaBarText(textStatusBar or this)
+    end)
+
+    -- Apply immediately when the bar already exists; otherwise its first normal
+    -- TextStatusBar update will be caught by the hook above.
+    local druidManaBar = getglobal and getglobal("DruidManaBar") or nil
+    if druidManaBar then
+      UpdateDruidManaBarText(druidManaBar)
     end
 
     local playerSetStatusBarColor = PlayerFrameHealthBar.SetStatusBarColor
