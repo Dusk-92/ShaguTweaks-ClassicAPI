@@ -128,6 +128,14 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 - ClassicAPI integration
 - SuperWoW integration
 
+## 🧹 Removed / integrated modules
+
+The following original ShaguTweaks modules are not included as standalone modules because their functionality is either integrated elsewhere or no longer required:
+
+- **Chat Links** → integrated into **Chat Tweaks**
+- **Real Health Numbers** → value display integrated into **Unit Frame Big Health**
+- **Blue Shaman Class Colors** → no longer required; supported natively by Turtle WoW-like clients
+
 ## 🙏 Credits
 
 Original addon by **shagu**.
