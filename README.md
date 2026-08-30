@@ -122,10 +122,10 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 - Smaller Error Frame
 - XP Bar Text
 
-### Compatibility
+## 🔧 Compatibility
 
-- Turtle WoW-like server integration
 - ClassicAPI integration
+- Turtle WoW-like server integration
 - SuperWoW integration
 
 ## 🧹 Removed / integrated modules
@@ -138,6 +138,12 @@ The following original ShaguTweaks modules are not included as standalone module
 
 ## 🙏 Credits
 
-Original addon by **shagu**.
+Original addon and modules by **Shagu**.
+
+Additional maintenance and Turtle WoW work by **paokkerkir**.
+
+ClassicAPI compatibility fork maintained by **Dusk-92**.
 
 Additional code and ideas from **pfUI** and **zUI**.
+
+Released under the original **MIT License**.
