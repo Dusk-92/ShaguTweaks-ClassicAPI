@@ -68,18 +68,105 @@ module.enable = function(self)
     -- the matching Big Health texture instead of replacing the global function.
     hooksecurefunc("TargetFrame_CheckClassification", UpdateTargetClassificationTexture)
 
-    -- Keep status-bar text inside the lower half of the enlarged health bars.
-    -- The stock Turtle-style text position sits too high once Big Health grows
-    -- the bars upward and can overlap the unit name.
-    if PlayerFrameHealthBar.TextString then
-      PlayerFrameHealthBar.TextString:ClearAllPoints()
-      PlayerFrameHealthBar.TextString:SetPoint("CENTER", PlayerFrameHealthBar, "CENTER", 0, -7)
+    -- Big Health owns the compact value display while enabled. Keep Blizzard /
+    -- Turtle status texts alive for compatibility, but make them invisible so
+    -- their current/max or percent formats cannot overlap our centered values.
+    local nativeTexts = {
+      PlayerFrameHealthBar.TextString,
+      PlayerFrameManaBar.TextString,
+      TargetFrameHealthBar.TextString,
+      TargetFrameManaBar.TextString,
+      _G.TargetHPText,
+      _G.TargetHPPercText,
+    }
+
+    for _, text in pairs(nativeTexts) do
+      if text then text:SetAlpha(0) end
     end
 
-    if TargetFrameHealthBar.TextString then
-      TargetFrameHealthBar.TextString:ClearAllPoints()
-      TargetFrameHealthBar.TextString:SetPoint("CENTER", TargetFrameHealthBar, "CENTER", -2, -7)
+    if not self.valueTexts then
+      self.valueTexts = {}
+
+      local function CreateValueText(parent, anchor, y)
+        local text = parent:CreateFontString(nil, "OVERLAY", "TextStatusBarText")
+        text:ClearAllPoints()
+        text:SetPoint("CENTER", anchor, "CENTER", 0, y or 0)
+        text:SetJustifyH("CENTER")
+        text:SetTextColor(1, 1, 1, 1)
+        return text
+      end
+
+      self.valueTexts.playerHealth = CreateValueText(PlayerFrameHealthBar, PlayerFrameHealthBar, -7)
+      self.valueTexts.playerMana = CreateValueText(PlayerFrameManaBar, PlayerFrameManaBar, 0)
+      self.valueTexts.targetHealth = CreateValueText(TargetFrameHealthBar, TargetFrameHealthBar, -7)
+      self.valueTexts.targetMana = CreateValueText(TargetFrameManaBar, TargetFrameManaBar, 0)
     end
+
+    local function UpdateValueText(text, unit, power)
+      if unit == "target" and not UnitExists("target") then
+        text:Hide()
+        return
+      end
+
+      local value
+      local max
+      if power == "health" then
+        value = UnitHealth(unit)
+        max = UnitHealthMax(unit)
+      else
+        value = UnitMana(unit)
+        max = UnitManaMax(unit)
+      end
+
+      if not max or max <= 0 then
+        text:Hide()
+        return
+      end
+
+      text:SetText(tostring(value or 0))
+      text:Show()
+    end
+
+    local function UpdateUnitValues(unit)
+      if unit == "player" then
+        UpdateValueText(self.valueTexts.playerHealth, "player", "health")
+        UpdateValueText(self.valueTexts.playerMana, "player", "power")
+      elseif unit == "target" then
+        UpdateValueText(self.valueTexts.targetHealth, "target", "health")
+        UpdateValueText(self.valueTexts.targetMana, "target", "power")
+      end
+    end
+
+    if not self.valueEvents then
+      self.valueEvents = CreateFrame("Frame")
+      self.valueEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
+      self.valueEvents:RegisterEvent("PLAYER_TARGET_CHANGED")
+      self.valueEvents:RegisterEvent("UNIT_HEALTH")
+      self.valueEvents:RegisterEvent("UNIT_MAXHEALTH")
+      self.valueEvents:RegisterEvent("UNIT_MANA")
+      self.valueEvents:RegisterEvent("UNIT_MAXMANA")
+      self.valueEvents:RegisterEvent("UNIT_RAGE")
+      self.valueEvents:RegisterEvent("UNIT_MAXRAGE")
+      self.valueEvents:RegisterEvent("UNIT_ENERGY")
+      self.valueEvents:RegisterEvent("UNIT_MAXENERGY")
+      self.valueEvents:RegisterEvent("UNIT_FOCUS")
+      self.valueEvents:RegisterEvent("UNIT_MAXFOCUS")
+      self.valueEvents:RegisterEvent("UNIT_HAPPINESS")
+      self.valueEvents:RegisterEvent("UNIT_MAXHAPPINESS")
+      self.valueEvents:RegisterEvent("UNIT_DISPLAYPOWER")
+
+      self.valueEvents:SetScript("OnEvent", function()
+        if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_TARGET_CHANGED" then
+          UpdateUnitValues("player")
+          UpdateUnitValues("target")
+        elseif arg1 == "player" or arg1 == "target" then
+          UpdateUnitValues(arg1)
+        end
+      end)
+    end
+
+    UpdateUnitValues("player")
+    UpdateUnitValues("target")
 
     local playerSetStatusBarColor = PlayerFrameHealthBar.SetStatusBarColor
     local targetSetStatusBarColor = TargetFrameHealthBar.SetStatusBarColor
