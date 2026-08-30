@@ -88,7 +88,11 @@ module.enable = function(self)
       self.valueTexts = {}
 
       local function CreateValueText(parent, anchor, y)
-        local text = parent:CreateFontString(nil, "OVERLAY", "TextStatusBarText")
+        local text = parent:CreateFontString(nil, "OVERLAY", "GameFontWhite")
+        -- Match the compact unit-frame number style used by the former
+        -- health-numbers module: Friz Quadrata, 10px, outlined.
+        text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        text:SetHeight(32)
         text:ClearAllPoints()
         text:SetPoint("CENTER", anchor, "CENTER", 0, y or 0)
         text:SetJustifyH("CENTER")
