@@ -3,7 +3,7 @@ local T = ShaguTweaks.T
 
 local module = ShaguTweaks:register({
   title = T["MiniMap Clock"],
-  description = T["Adds a small 24h clock to the mini map."],
+  description = T["Adds a small 24h clock to the mini map with an integrated timer. Left click the clock to toggle the timer. Left click the timer to start/pause or right click to reset."],
   expansions = { ["vanilla"] = true },
   category = T["Minimap & World Map"],
   enabled = true,
@@ -175,9 +175,6 @@ module.enable = function(self)
     GameTooltip:AddLine(T["Clock"])
     GameTooltip:AddDoubleLine(T["Localtime"], time, 1,1,1,1,1,1)
     GameTooltip:AddDoubleLine(T["Servertime"], servertime, 1,1,1,1,1,1)
-    GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(T["Left-click the clock to show or hide the timer."], .8,.8,.8)
-    GameTooltip:AddLine(T["Timer: left-click to start/pause, right-click to reset."], .8,.8,.8)
     GameTooltip:Show()
   end)
 
