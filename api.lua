@@ -171,7 +171,8 @@ end
 
 API.StartAttack = function(unit)
   if API.attackverbs then
-    return _G.StartAttack(unit)
+    if unit then return _G.StartAttack(unit) end
+    return _G.StartAttack()
   end
 end
 
@@ -183,7 +184,8 @@ end
 
 API.FocusUnit = function(unit)
   if API.focus then
-    return _G.FocusUnit(unit)
+    if unit then return _G.FocusUnit(unit) end
+    return _G.FocusUnit()
   end
 end
 
