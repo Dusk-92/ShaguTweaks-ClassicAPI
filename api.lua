@@ -59,6 +59,8 @@ API.iteminventorytype = API.items and type(_G.C_Item.GetItemInventoryTypeByID) =
 API.iteminventoryslotkey = API.items and type(_G.C_Item.GetItemInventorySlotKey) == "function"
 API.itemrange = API.items and type(_G.C_Item.IsItemInRange) == "function"
 API.itemcount = API.items and type(_G.C_Item.GetItemCount) == "function"
+API.itemfamily = API.items and type(_G.C_Item.GetItemFamily) == "function"
+API.itemmaxstack = API.items and type(_G.C_Item.GetItemMaxStackSizeByID) == "function"
 
 API.mapoverlays = type(_G.C_Map) == "table"
   and type(_G.C_Map.GetMapOverlays) == "function"
@@ -81,6 +83,13 @@ API.modifierstate = API.eventutils and API.modifierkeys
 API.merchant = type(_G.C_MerchantFrame) == "table"
   and type(_G.C_MerchantFrame.GetNumJunkItems) == "function"
   and type(_G.C_MerchantFrame.SellAllJunkItems) == "function"
+API.merchantiteminfo = type(_G.C_MerchantFrame) == "table"
+  and type(_G.C_MerchantFrame.GetItemInfo) == "function"
+API.buybackitemid = type(_G.C_MerchantFrame) == "table"
+  and type(_G.C_MerchantFrame.GetBuybackItemID) == "function"
+
+API.overridebindings = type(_G.SetOverrideBindingClick) == "function"
+  and type(_G.ClearOverrideBindings) == "function"
 
 API.playerstate = type(_G.IsMounted) == "function"
   and type(_G.Dismount) == "function"
@@ -446,6 +455,126 @@ API.GetItemCount = function(item, includeBank, includeUses)
     return _G.C_Item.GetItemCount(item, includeBank, includeUses)
   end
   return 0
+end
+
+API.GetItemFamily = function(item)
+  if API.itemfamily and item then
+    return _G.C_Item.GetItemFamily(item)
+  end
+  return 0
+end
+
+API.GetItemMaxStackSizeByID = function(itemID)
+  if API.itemmaxstack and itemID then
+    return _G.C_Item.GetItemMaxStackSizeByID(itemID)
+  end
+
+  local _, _, _, _, _, _, _, stackSize = API.GetItemInfo(itemID)
+  return stackSize or 1
+end
+
+API.GetMerchantItemInfo = function(index)
+  if API.merchantiteminfo and index then
+    return _G.C_MerchantFrame.GetItemInfo(index)
+  end
+end
+
+API.GetBuybackItemID = function(index)
+  if API.buybackitemid and index then
+    return _G.C_MerchantFrame.GetBuybackItemID(index)
+  end
+end
+
+API.GetMerchantItemID = function(index)
+  if type(_G.GetMerchantItemID) == "function" then
+    return _G.GetMerchantItemID(index)
+  end
+  return GetItemIDFromLink(_G.GetMerchantItemLink(index))
+end
+
+API.GetLootSlotItemID = function(slot)
+  if type(_G.GetLootSlotItemID) == "function" then
+    return _G.GetLootSlotItemID(slot)
+  end
+  return GetItemIDFromLink(_G.GetLootSlotLink(slot))
+end
+
+API.GetQuestItemID = function(itemType, index)
+  if type(_G.GetQuestItemID) == "function" then
+    return _G.GetQuestItemID(itemType, index)
+  end
+  return GetItemIDFromLink(_G.GetQuestItemLink(itemType, index))
+end
+
+API.GetQuestLogItemID = function(itemType, index)
+  if type(_G.GetQuestLogItemID) == "function" then
+    return _G.GetQuestLogItemID(itemType, index)
+  end
+  return GetItemIDFromLink(_G.GetQuestLogItemLink(itemType, index))
+end
+
+API.GetTradePlayerItemID = function(index)
+  if type(_G.GetTradePlayerItemID) == "function" then
+    return _G.GetTradePlayerItemID(index)
+  end
+  return GetItemIDFromLink(_G.GetTradePlayerItemLink(index))
+end
+
+API.GetTradeTargetItemID = function(index)
+  if type(_G.GetTradeTargetItemID) == "function" then
+    return _G.GetTradeTargetItemID(index)
+  end
+  return GetItemIDFromLink(_G.GetTradeTargetItemLink(index))
+end
+
+API.GetInboxItemID = function(index)
+  if type(_G.GetInboxItemID) == "function" then
+    return _G.GetInboxItemID(index)
+  end
+
+  if type(_G.GetInboxItemLink) == "function" then
+    return GetItemIDFromLink(_G.GetInboxItemLink(index))
+  end
+end
+
+API.GetTradeSkillItemID = function(index)
+  if type(_G.GetTradeSkillItemID) == "function" then
+    return _G.GetTradeSkillItemID(index)
+  end
+  return GetItemIDFromLink(_G.GetTradeSkillItemLink(index))
+end
+
+API.GetTradeSkillReagentItemID = function(index, reagentIndex)
+  if type(_G.GetTradeSkillReagentItemID) == "function" then
+    return _G.GetTradeSkillReagentItemID(index, reagentIndex)
+  end
+  return GetItemIDFromLink(_G.GetTradeSkillReagentItemLink(index, reagentIndex))
+end
+
+API.GetCraftReagentItemID = function(index, reagentIndex)
+  if type(_G.GetCraftReagentItemID) == "function" then
+    return _G.GetCraftReagentItemID(index, reagentIndex)
+  end
+  return GetItemIDFromLink(_G.GetCraftReagentItemLink(index, reagentIndex))
+end
+
+API.GetAuctionItemID = function(itemType, index)
+  if type(_G.GetAuctionItemID) == "function" then
+    return _G.GetAuctionItemID(itemType, index)
+  end
+  return GetItemIDFromLink(_G.GetAuctionItemLink(itemType, index))
+end
+
+API.SetOverrideBindingClick = function(owner, priority, key, buttonName, mouseButton)
+  if API.overridebindings and owner and key and buttonName then
+    return _G.SetOverrideBindingClick(owner, priority and true or false, key, buttonName, mouseButton)
+  end
+end
+
+API.ClearOverrideBindings = function(owner)
+  if API.overridebindings and owner then
+    return _G.ClearOverrideBindings(owner)
+  end
 end
 
 API.GetMapOverlays = function(areaID)
