@@ -25,12 +25,14 @@ Settings: **Esc → Advanced Options**.
 
 ## ✨ Main changes
 
-- ClassicAPI-first integration for casts, auras, items and unit data.
+- ClassicAPI-backed integration for casts, auras, items and unit data.
 - Reduced per-frame work, tooltip scans and repeated UI updates.
 - Event-driven target and nameplate castbars where possible.
 - Safer GUID-based handling for same-name enemies.
 - Better Turtle WoW-like server compatibility for custom items, spells and UI changes.
 - Safer hooks and fewer destructive global overrides.
+- Expanded Item Rarity Borders support for merchant, quest, mail, trade, crafting and loot frames.
+- Added independent Item Rarity Glows using the shared item rarity engine.
 - Various stability fixes across legacy ShaguTweaks modules.
 
 ## 🔷 Mods using ClassicAPI directly
