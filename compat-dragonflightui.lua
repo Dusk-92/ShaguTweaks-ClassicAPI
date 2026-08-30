@@ -6,6 +6,26 @@
 -- ShaguTweaks / Extras ClassicAPI modules to DragonflightUI's ShaguTweaks tab
 -- without modifying DragonflightUI itself.
 
+
+-- Keep this file completely dormant when DragonflightUI-Reforged is not
+-- installed/enabled. This avoids creating compatibility tables, metatables or
+-- a polling frame for normal ShaguTweaks users.
+local function DragonflightUIEnabled()
+  if DFRL then return true end
+  if not GetNumAddOns or not GetAddOnInfo then return false end
+
+  for i = 1, GetNumAddOns() do
+    local name, _, _, enabled = GetAddOnInfo(i)
+    if name == "DragonflightUI-Reforged" then
+      return enabled and true or false
+    end
+  end
+
+  return false
+end
+
+if not DragonflightUIEnabled() then return end
+
 local T = ShaguTweaks.T
 local mods = ShaguTweaks.mods
 
