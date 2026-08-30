@@ -22,6 +22,9 @@ API.casts = type(_G.C_Spell) == "table"
 API.spellrange = type(_G.C_Spell) == "table"
   and type(_G.C_Spell.IsSpellInRange) == "function"
 
+API.spellreagents = type(_G.C_Spell) == "table"
+  and type(_G.C_Spell.GetSpellReagents) == "function"
+
 API.auras = type(_G.C_UnitAuras) == "table"
   and type(_G.C_UnitAuras.GetAuraDataByIndex) == "function"
   and type(_G.C_UnitAuras.GetDebuffDataByIndex) == "function"
@@ -55,6 +58,14 @@ API.itemprice = API.items and type(_G.C_Item.GetItemSellPriceByID) == "function"
 API.iteminventorytype = API.items and type(_G.C_Item.GetItemInventoryTypeByID) == "function"
 API.iteminventoryslotkey = API.items and type(_G.C_Item.GetItemInventorySlotKey) == "function"
 API.itemrange = API.items and type(_G.C_Item.IsItemInRange) == "function"
+API.itemcount = API.items and type(_G.C_Item.GetItemCount) == "function"
+
+API.mapoverlays = type(_G.C_Map) == "table"
+  and type(_G.C_Map.GetMapOverlays) == "function"
+API.mapareainfo = type(_G.C_Map) == "table"
+  and type(_G.C_Map.GetAreaInfo) == "function"
+API.mapexploration = type(_G.C_MapExplorationInfo) == "table"
+  and type(_G.C_MapExplorationInfo.GetUnexploredMapTextures) == "function"
 
 API.eventutils = type(_G.C_EventUtils) == "table"
   and type(_G.C_EventUtils.IsEventValid) == "function"
@@ -273,6 +284,12 @@ API.GetSpellInfo = function(spell, bookType)
   end
 end
 
+API.GetSpellReagents = function(spellID)
+  if API.spellreagents and spellID then
+    return _G.C_Spell.GetSpellReagents(spellID)
+  end
+end
+
 API.GetContainerNumFreeSlots = function(bag)
   if API.inventory then
     return _G.C_Container.GetContainerNumFreeSlots(bag)
@@ -421,6 +438,31 @@ end
 API.IsItemInRange = function(item, unit)
   if API.itemrange then
     return _G.C_Item.IsItemInRange(item, unit)
+  end
+end
+
+API.GetItemCount = function(item, includeBank, includeUses)
+  if API.itemcount and item then
+    return _G.C_Item.GetItemCount(item, includeBank, includeUses)
+  end
+  return 0
+end
+
+API.GetMapOverlays = function(areaID)
+  if not API.mapoverlays then return end
+  if areaID then return _G.C_Map.GetMapOverlays(areaID) end
+  return _G.C_Map.GetMapOverlays()
+end
+
+API.GetUnexploredMapTextures = function(areaID)
+  if not API.mapexploration then return end
+  if areaID then return _G.C_MapExplorationInfo.GetUnexploredMapTextures(areaID) end
+  return _G.C_MapExplorationInfo.GetUnexploredMapTextures()
+end
+
+API.GetAreaInfo = function(areaID)
+  if API.mapareainfo and areaID then
+    return _G.C_Map.GetAreaInfo(areaID)
   end
 end
 
