@@ -359,21 +359,14 @@ ShaguTweaks.GetItemCount = function(itemName)
   local count = 0
   for bag = 4, 0, -1 do
     for slot = 1, GetContainerNumSlots(bag) do
-      local _, itemCount = GetContainerItemInfo(bag, slot)
-      if itemCount then
-        local itemID
-        if API and API.GetContainerItemID then
-          itemID = API.GetContainerItemID(bag, slot)
-        else
-          itemID = LegacyItemIDFromLink(GetContainerItemLink(bag, slot))
-        end
+      local itemCount = API and API.GetContainerItemStackCount
+        and API.GetContainerItemStackCount(bag, slot) or 0
 
-        local queryName
-        if itemID and API and API.GetItemNameByID then
-          queryName = API.GetItemNameByID(itemID)
-        elseif itemID then
-          queryName = GetItemInfo(itemID)
-        end
+      if itemCount > 0 then
+        local itemID = API and API.GetContainerItemID
+          and API.GetContainerItemID(bag, slot)
+        local queryName = itemID and API and API.GetItemNameByID
+          and API.GetItemNameByID(itemID)
 
         if queryName == itemName then
           count = count + itemCount
@@ -401,10 +394,11 @@ local function FindOwnedItemLinkByName(name)
   -- works for Turtle WoW custom item IDs beyond vanilla's original range.
   for bag = 0, 4 do
     for slot = 1, GetContainerNumSlots(bag) do
-      local link = GetContainerItemLink(bag, slot)
+      local link = API and API.GetContainerItemLink
+        and API.GetContainerItemLink(bag, slot)
       if link then
-        local itemID = API and API.GetContainerItemID and API.GetContainerItemID(bag, slot)
-          or LegacyItemIDFromLink(link)
+        local itemID = API and API.GetContainerItemID
+          and API.GetContainerItemID(bag, slot)
         local itemName = itemID and API and API.GetItemNameByID and API.GetItemNameByID(itemID)
         if not itemName then
           local _, _, linkedName = string.find(link, "%[(.-)%]")
@@ -443,8 +437,15 @@ ShaguTweaks.GetItemLinkByName = function(name)
 
   -- Vanilla has no generic name -> itemID resolver. Keep the original base-game
   -- fallback for non-owned items, but custom owned items no longer depend on it.
+  local API = ShaguTweaks.API
   for itemID = 1, 25818 do
-    local itemName, itemLink, itemQuality = GetItemInfo(itemID)
+    local itemName, itemLink, itemQuality
+    if API and API.GetItemInfo then
+      itemName, itemLink, itemQuality = API.GetItemInfo(itemID)
+    else
+      itemName, itemLink, itemQuality = GetItemInfo(itemID)
+    end
+
     if itemName and itemName == name then
       local _, _, _, hex = GetItemQualityColor(tonumber(itemQuality))
       local hyperLink = hex.. "|H".. itemLink .."|h["..itemName.."]|h" .. FONT_COLOR_CODE_CLOSE

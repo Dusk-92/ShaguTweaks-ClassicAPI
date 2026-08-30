@@ -44,6 +44,9 @@ API.inventory = type(_G.C_Container) == "table"
 API.containeritems = type(_G.C_Container) == "table"
   and type(_G.C_Container.GetContainerItemID) == "function"
 
+API.containeriteminfo = type(_G.C_Container) == "table"
+  and type(_G.C_Container.GetContainerItemInfo) == "function"
+
 API.items = type(_G.C_Item) == "table"
 API.iteminfo = API.items and type(_G.C_Item.GetItemInfo) == "function"
 API.itemname = API.items and type(_G.C_Item.GetItemNameByID) == "function"
@@ -74,6 +77,13 @@ API.playerstate = type(_G.IsMounted) == "function"
   and type(_G.CancelShapeshiftForm) == "function"
 
 API.unitguid = type(_G.UnitGUID) == "function"
+API.unitrange = type(_G.UnitInRange) == "function"
+
+API.macrospell = type(_G.GetMacroSpell) == "function"
+API.attackverbs = type(_G.StartAttack) == "function"
+  and type(_G.StopAttack) == "function"
+API.focus = type(_G.FocusUnit) == "function"
+  and type(_G.ClearFocus) == "function"
 
 API.chatidentity = type(_G.GetCurrentChatGUID) == "function"
   and type(_G.GetPlayerInfoByGUID) == "function"
@@ -153,6 +163,36 @@ API.GetActionInfo = function(slot)
   end
 end
 
+API.GetMacroSpell = function(slot)
+  if API.macrospell then
+    return _G.GetMacroSpell(slot)
+  end
+end
+
+API.StartAttack = function(unit)
+  if API.attackverbs then
+    return _G.StartAttack(unit)
+  end
+end
+
+API.StopAttack = function()
+  if API.attackverbs then
+    return _G.StopAttack()
+  end
+end
+
+API.FocusUnit = function(unit)
+  if API.focus then
+    return _G.FocusUnit(unit)
+  end
+end
+
+API.ClearFocus = function()
+  if API.focus then
+    return _G.ClearFocus()
+  end
+end
+
 API.IsAutoAttackSpell = function(spellID)
   return API.autoattack and _G.C_Spell.IsAutoAttackSpell(spellID) or false
 end
@@ -188,6 +228,20 @@ end
 API.UnitDebuff = function(unit, index, filter)
   if API.aurapositional then
     return _G.C_UnitAuras.UnitDebuff(unit, index, filter)
+  end
+end
+
+-- Normalize the debuff type across ClassicAPI's Classic-Era-shaped
+-- positional return and Vanilla's legacy three-value UnitDebuff return.
+API.GetDebuffType = function(unit, index, filter)
+  if API.aurapositional then
+    local _, _, _, debuffType = _G.C_UnitAuras.UnitDebuff(unit, index, filter)
+    return debuffType
+  end
+
+  if type(_G.UnitDebuff) == "function" then
+    local _, _, debuffType = _G.UnitDebuff(unit, index)
+    return debuffType
   end
 end
 
@@ -273,13 +327,36 @@ end
 
 API.GetItemIDFromLink = GetItemIDFromLink
 
+API.GetContainerItemLink = function(bag, slot)
+  if API.containeriteminfo then
+    local info = _G.C_Container.GetContainerItemInfo(bag, slot)
+    if info and info.hyperlink then
+      return info.hyperlink
+    end
+  end
+
+  return _G.GetContainerItemLink(bag, slot)
+end
+
+API.GetContainerItemStackCount = function(bag, slot)
+  if API.containeriteminfo then
+    local info = _G.C_Container.GetContainerItemInfo(bag, slot)
+    if info and info.stackCount then
+      return info.stackCount
+    end
+  end
+
+  local _, count = _G.GetContainerItemInfo(bag, slot)
+  return count or 0
+end
+
 API.GetContainerItemID = function(bag, slot)
   if API.containeritems then
     local itemID = _G.C_Container.GetContainerItemID(bag, slot)
     if itemID then return itemID end
   end
 
-  return GetItemIDFromLink(_G.GetContainerItemLink(bag, slot))
+  return GetItemIDFromLink(API.GetContainerItemLink(bag, slot))
 end
 
 API.GetInventoryItemID = function(unit, slot)
@@ -379,4 +456,30 @@ API.UnitGUID = function(unit)
   if API.unitguid then
     return _G.UnitGUID(unit)
   end
+end
+
+-- Prefer ClassicAPI's reach-aware 40-yard UnitInRange. The wrapper handles
+-- the player's own frame explicitly and preserves a Vanilla interaction check
+-- only as a centralized compatibility fallback.
+API.UnitInRange = function(unit)
+  if not unit then return false, false end
+
+  if type(_G.UnitIsUnit) == "function" and _G.UnitIsUnit(unit, "player") then
+    return true, true
+  end
+
+  if API.unitrange then
+    local inRange, checked = _G.UnitInRange(unit)
+    if checked then
+      return inRange and true or false, true
+    end
+  end
+
+  if type(_G.UnitExists) == "function"
+    and type(_G.CheckInteractDistance) == "function"
+    and _G.UnitExists(unit) then
+    return _G.CheckInteractDistance(unit, 4) and true or false, true
+  end
+
+  return false, false
 end
