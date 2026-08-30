@@ -92,3 +92,6 @@ mods\improved-roll-frames.lua
 mods\improved-castbar.lua
 mods\smaller-errors-frame.lua
 mods\skip-gossip.lua
+
+# compatibility
+compat-dragonflightui.lua
