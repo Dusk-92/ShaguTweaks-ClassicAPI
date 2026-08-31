@@ -25,6 +25,27 @@ local function EnsurePoint(frame, point, relativeTo, relativePoint, x, y)
   frame:SetPoint(point, relativeTo, relativePoint, x, y)
 end
 
+local function GetMoverState(group)
+  local state = ShaguTweaks.MovableUnitFramesState
+  if not state then return false, false end
+
+  local manual = state.manual and state.manual[group] and true or false
+  local dragging = state.dragging and state.dragging[group] and true or false
+  return manual, dragging
+end
+
+local function GetMovedPosition(key)
+  local config = ShaguTweaks_config and ShaguTweaks_config["MoveUnitframes"]
+  return config and config[key]
+end
+
+local function EnsureMovedPosition(frame, key)
+  local pos = GetMovedPosition(key)
+  if not frame or not pos or not pos[1] or not pos[2] then return end
+
+  EnsurePoint(frame, "TOPLEFT", UIParent, "BOTTOMLEFT", pos[1], pos[2])
+end
+
 module.enable = function(self)
   local scale = module.config["minimap.scale"]
   if scale < 1.0 then scale = 1.0 end
@@ -55,25 +76,52 @@ module.enable = function(self)
   local enforcer = self.enforcer
 
   enforcer:SetScript("OnUpdate", function()
-    EnsurePoint(BuffFrame, "TOPRIGHT", UIParent, "TOPRIGHT", targetX, targetY)
+    local buffsManual, buffsDragging = GetMoverState("buffs")
+    local debuffsManual, debuffsDragging = GetMoverState("debuffs")
+    local weaponManual, weaponDragging = GetMoverState("weapon")
 
-    if BuffButton16 then
+    -- Manually moved aura groups always win. While a group is actively being
+    -- dragged, do not write any anchor for it; once released, enforce the
+    -- saved user position instead of the Enlarged Minimap default.
+    if buffsManual then
+      if not buffsDragging then
+        EnsureMovedPosition(BuffButton0, "BuffButton0")
+      end
+    else
+      EnsurePoint(BuffFrame, "TOPRIGHT", UIParent, "TOPRIGHT", targetX, targetY)
+
+      if BuffButton8 then
+        EnsurePoint(BuffButton8, "TOPRIGHT", UIParent, "TOPRIGHT", buffRowX, buffRowY)
+      end
+    end
+
+    if debuffsManual then
+      if not debuffsDragging then
+        EnsureMovedPosition(BuffButton32, "BuffButton32")
+      end
+    elseif BuffButton16 then
       EnsurePoint(BuffButton16, "TOPRIGHT", UIParent, "TOPRIGHT", debuffX, debuffY)
     end
 
-    if BuffButton8 then
-      EnsurePoint(BuffButton8, "TOPRIGHT", UIParent, "TOPRIGHT", buffRowX, buffRowY)
-    end
+    if weaponManual then
+      if not weaponDragging then
+        EnsureMovedPosition(TempEnchant1, "TempEnchant1")
 
-    -- Temporary enchant buttons are also restored by the stock aura layout.
-    -- Verify their anchors like the buff rows instead of clearing and setting
-    -- them unconditionally every frame.
-    if TempEnchant1 then
-      EnsurePoint(TempEnchant1, "TOPLEFT", BuffFrame, "TOPRIGHT", 5, 0)
-    end
+        if TempEnchant2 and TempEnchant1 then
+          EnsurePoint(TempEnchant2, "TOP", TempEnchant1, "BOTTOM", 0, -2)
+        end
+      end
+    else
+      -- Temporary enchant buttons are also restored by the stock aura layout.
+      -- Verify their anchors like the buff rows instead of clearing and setting
+      -- them unconditionally every frame.
+      if TempEnchant1 then
+        EnsurePoint(TempEnchant1, "TOPLEFT", BuffFrame, "TOPRIGHT", 5, 0)
+      end
 
-    if TempEnchant2 and TempEnchant1 then
-      EnsurePoint(TempEnchant2, "TOP", TempEnchant1, "BOTTOM", 0, -2)
+      if TempEnchant2 and TempEnchant1 then
+        EnsurePoint(TempEnchant2, "TOP", TempEnchant1, "BOTTOM", 0, -2)
+      end
     end
   end)
 end
