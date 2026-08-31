@@ -5,7 +5,7 @@ local hooksecurefunc = hooksecurefunc or ShaguTweaks.hooksecurefunc
 
 local module = ShaguTweaks:register({
   title = T["Real Health Numbers"],
-  description = T["Estimates health numbers, and shows numbers on player, pet and target unit frames."],
+  description = T["Shows health and power numbers on player, pet and target unit frames. On Vanilla servers, target health may be estimated when exact values are unavailable."],
   expansions = { ["vanilla"] = true },
   category = T["Unit Frames"],
   enabled = nil,
