@@ -202,8 +202,9 @@ end
 -- shaguExtras/shaguExtrasData unset even though addon2 becomes true moments
 -- later. Recover that state from WoW's authoritative addon-loaded flag before
 -- DragonflightUI builds the settings page.
-function Compat:RecoverExtrasMetadata()
-  if not DFRL or not DFRL.gui or not ExtrasLoaded() then return false end
+function Compat:RecoverExtrasMetadata(forceLoaded)
+  if not DFRL or not DFRL.gui then return false end
+  if not forceLoaded and not ExtrasLoaded() then return false end
 
   DFRL.addon2 = true
 
@@ -276,12 +277,15 @@ function Compat:InjectAll()
   self:GrowDragonflightPanel()
 end
 
-function Compat:InstallDragonflightHooks()
+function Compat:InstallDragonflightHooks(forceExtrasLoaded)
   if not DFRL or not DFRL.gui then return end
   self.active = true
 
   -- Repair DragonflightUI's Extras metadata race before any injection attempt.
-  self:RecoverExtrasMetadata()
+  -- During ADDON_LOADED itself, Vanilla can still report IsAddOnLoaded() as
+  -- false until the event finishes, so trust the event when explicitly told
+  -- that ShaguTweaks-extras has just completed loading.
+  self:RecoverExtrasMetadata(forceExtrasLoaded)
 
   -- DragonflightUI builds the ShaguTweaks page from its config-ready callback.
   -- Insert our metadata immediately before that page is drawn.
@@ -327,7 +331,13 @@ watcher.retries = 0
 
 watcher:SetScript("OnEvent", function()
   if event == "ADDON_LOADED" then
-    if arg1 == "DragonflightUI-Reforged" or arg1 == "ShaguTweaks-extras" then
+    if arg1 == "ShaguTweaks-extras" then
+      -- All Extras files have finished loading at this point, but
+      -- IsAddOnLoaded("ShaguTweaks-extras") may not flip to true until after
+      -- this event returns. Force the recovery now, before VARIABLES_LOADED
+      -- lets DragonflightUI build its ShaguTweaks page.
+      Compat:InstallDragonflightHooks(true)
+    elseif arg1 == "DragonflightUI-Reforged" then
       Compat:InstallDragonflightHooks()
     end
   elseif event == "VARIABLES_LOADED" then
