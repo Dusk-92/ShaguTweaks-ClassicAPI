@@ -37,9 +37,9 @@ Compat.coreInjected = Compat.coreInjected or 0
 Compat.extrasInjected = Compat.extrasInjected or 0
 Compat.legacyHits = Compat.legacyHits or 0
 
--- DragonflightUI still indexes these old module names directly. Keep them as
--- virtual entries so they don't appear in ShaguTweaks' own module list or
--- create SavedVariables entries.
+-- DragonflightUI still indexes the old Extras energy-tick module name
+-- directly. Keep a virtual entry so the legacy lookup stays harmless without
+-- adding a fake module to ShaguTweaks' own list or SavedVariables.
 local function LegacyStub()
   return {
     enabled = nil,
@@ -51,7 +51,6 @@ local function LegacyStub()
 end
 
 local legacy = {}
-legacy[T["Real Health Numbers"]] = LegacyStub()
 legacy[T["Show Energy Ticks"]] = LegacyStub()
 
 local mt = getmetatable(mods) or {}
@@ -98,6 +97,9 @@ Block("MiniMap Clock")
 Block("MiniMap Tweaks")
 Block("MiniMap Square")
 Block("Movable Unit Frames")
+-- DragonflightUI replaces the stock player/target bars and provides its own
+-- health/power text. Keep the real ShaguTweaks modules disabled there even
+-- though Real Health Numbers is once again a genuine core module.
 Block("Real Health Numbers")
 Block("Unit Frame Big Health")
 Block("Reduced Actionbar Size")
