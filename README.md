@@ -34,6 +34,8 @@ Settings: **Esc → Advanced Options**.
 - Expanded Item Rarity Borders support for merchant, quest, mail, trade, crafting and loot frames.
 - Added independent Item Rarity Glows using the shared item rarity engine.
 - Expanded Movable Unit Frames to handle Player, Target, Party, Minimap, Buffs, Debuffs and Weapon Buffs through one shared Ctrl+Shift mover and alignment grid.
+- Restored Real Health Numbers as an independent module, with direct values when available and a lazy Vanilla health estimator fallback for percentage-only targets.
+- Unit Frame Big Health is presentation-only again and no longer forces numeric health/power text.
 - Various stability fixes across legacy ShaguTweaks modules.
 
 ## 🔷 Mods using ClassicAPI directly
@@ -47,6 +49,7 @@ Settings: **Esc → Advanced Options**.
 - Item Rarity Borders
 - Item Rarity Glows
 - Movable Unit Frames
+- Real Health Numbers
 - Nameplate Class Colors
 - Nameplate Castbar
 - No Toggle
@@ -79,6 +82,7 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 - Energy & Mana Tick
 - Health Colors
 - Movable Unit Frames
+- Real Health Numbers
 - Enemy Target Castbar
 - Target Debuff Timer
 
@@ -146,7 +150,6 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 The following original ShaguTweaks modules are not included as standalone modules because their functionality is either integrated elsewhere or no longer required:
 
 - **Chat Links** → integrated into **Chat Tweaks**
-- **Real Health Numbers** → value display integrated into **Unit Frame Big Health**
 - **Blue Shaman Class Colors** → no longer required; supported natively by Turtle WoW-like clients
 - **Movable Unit Frames Extended** → integrated into **Movable Unit Frames**
 
