@@ -90,7 +90,6 @@ local addonframes = {
   ["Blizzard_InspectUI"] = { "InspectPaperDollFrame", "InspectHonorFrame", "InspectFrameTab1", "InspectFrameTab2" },
   ["Blizzard_MacroUI"] = { "MacroFrame", "MacroPopupFrame" },
   ["Blizzard_RaidUI"] = { "ReadyCheckFrame" },
-  ["Blizzard_TalentUI"] = { "TalentFrame" },
   ["Blizzard_TradeSkillUI"] = { "TradeSkillFrame" },
   ["Blizzard_TrainerUI"] = { "ClassTrainerFrame" },
 }
@@ -262,14 +261,48 @@ module.enable = function(self)
     end
   end)
 
+  -- Load-on-demand Blizzard windows are created after the initial UIParent
+  -- scan. Watch the actual addon name (not the frame variable) and darken all
+  -- of its known frames once the addon has finished loading.
   for addon, data in pairs(addonframes) do
-    for _, frame in pairs(data) do
-      local frame = frame
-      HookAddonOrVariable(frame, function()
-        DarkenFrame(_G[frame])
+    local addon = addon
+    local data = data
+    HookAddonOrVariable(addon, function()
+      for _, frameName in pairs(data) do
+        local frame = _G[frameName]
+        if frame then DarkenFrame(frame) end
+      end
+
+      -- TalentFrame replaces/refreshes several textures whenever the selected
+      -- tree or talent state changes. Reapply dark mode after those updates;
+      -- this is event-driven and adds no permanent OnUpdate work.
+      if addon == "Blizzard_TalentUI"
+        and _G.TalentFrame
+        and _G.TalentFrame_Update
+        and not _G.TalentFrame.ShaguTweaksDarkHook then
+        _G.TalentFrame.ShaguTweaksDarkHook = true
+        ShaguTweaks.hooksecurefunc("TalentFrame_Update", function()
+          DarkenFrame(_G.TalentFrame)
+        end)
+      end
+    end)
+  end
+
+  -- Turtle's ArenaFrame is part of FrameXML rather than a Blizzard
+  -- load-on-demand addon. Re-darken it when shown so its custom ArenaFrame
+  -- textures stay consistent with Character/Honor.
+  HookAddonOrVariable("ArenaFrame", function()
+    if not _G.ArenaFrame then return end
+
+    DarkenFrame(_G.ArenaFrame)
+
+    if not _G.ArenaFrame.ShaguTweaksDarkHook then
+      _G.ArenaFrame.ShaguTweaksDarkHook = true
+      ShaguTweaks.HookScript(_G.ArenaFrame, "OnShow", function()
+        DarkenFrame(_G.ArenaFrame)
       end)
     end
-  end
+  end)
 
   HookAddonOrVariable("Blizzard_TimeManager", function()
     DarkenFrame(TimeManagerClockButton)
