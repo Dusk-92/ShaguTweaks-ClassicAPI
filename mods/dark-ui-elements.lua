@@ -87,9 +87,20 @@ local addonframes = {
   ["Blizzard_TalentUI"] = { "TalentFrame" },
   ["Blizzard_AuctionUI"] = { "AuctionFrame", "AuctionDressUpFrame" },
   ["Blizzard_CraftUI"] = { "CraftFrame" },
-  ["Blizzard_InspectUI"] = { "InspectPaperDollFrame", "InspectHonorFrame", "InspectFrameTab1", "InspectFrameTab2" },
+  ["Blizzard_InspectUI"] = {
+    "InspectPaperDollFrame",
+    "InspectHonorFrame",
+    "InspectArenaFrame",
+    "InspectTalentsFrame",
+    "TWTalentFrame",
+    "InspectFrameTab1",
+    "InspectFrameTab2",
+    "InspectFrameTab3",
+    "InspectFrameTab4",
+  },
   ["Blizzard_MacroUI"] = { "MacroFrame", "MacroPopupFrame" },
   ["Blizzard_RaidUI"] = { "ReadyCheckFrame" },
+  ["Blizzard_TalentUI"] = { "TalentFrame" },
   ["Blizzard_TradeSkillUI"] = { "TradeSkillFrame" },
   ["Blizzard_TrainerUI"] = { "ClassTrainerFrame" },
 }
@@ -261,112 +272,33 @@ module.enable = function(self)
     end
   end)
 
-  -- Load-on-demand Blizzard windows are created after the initial UIParent
-  -- scan. Handle ADDON_LOADED directly instead of relying on IsAddOnLoaded()
-  -- during the event, because Vanilla/Turtle can report it one step too late.
-  local function DarkenAddonFrames(addon, data, setup)
-    local watcher
-    local done
-
-    local function Apply()
-      local found
-
-      for _, frameName in pairs(data) do
-        local frame = _G[frameName]
-        if frame then
-          found = true
-          DarkenFrame(frame)
-        end
-      end
-
-      if not found then return end
-
-      if setup then setup() end
-      done = true
-      if watcher then watcher:UnregisterAllEvents() end
-    end
-
-    -- Most already-loaded addons/frames are handled immediately.
-    Apply()
-    if done then return end
-
-    watcher = CreateFrame("Frame")
-    watcher:RegisterEvent("ADDON_LOADED")
-    watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
-    watcher:SetScript("OnEvent", function()
-      if (event == "ADDON_LOADED" and arg1 == addon) or _G[data[1]] then
-        Apply()
-      end
-    end)
-  end
-
-  local function TintTalentBackgrounds()
-    local color = module.config["darkmode.color"]
-    local backgrounds = {
-      _G.TalentFrameBackgroundTopLeft,
-      _G.TalentFrameBackgroundTopRight,
-      _G.TalentFrameBackgroundBottomLeft,
-      _G.TalentFrameBackgroundBottomRight,
-    }
-
-    for _, texture in pairs(backgrounds) do
-      if texture then
-        texture:SetVertexColor(color.r, color.g, color.b, color.a)
-      end
-    end
-  end
-
-  local function SetupTalentDarkening()
-    if not _G.TalentFrame then return end
-
-    -- TalentFrame_Update replaces the four tree background textures on every
-    -- tree/state refresh. Tint only those refreshed textures afterwards instead
-    -- of rescanning the whole talent tree each time.
-    if _G.TalentFrame_Update and not _G.TalentFrame.ShaguTweaksDarkHook then
-      _G.TalentFrame.ShaguTweaksDarkHook = true
-      ShaguTweaks.hooksecurefunc("TalentFrame_Update", TintTalentBackgrounds)
-    end
-
-    TintTalentBackgrounds()
-  end
-
   for addon, data in pairs(addonframes) do
-    if addon == "Blizzard_TalentUI" then
-      DarkenAddonFrames(addon, data, SetupTalentDarkening)
-    else
-      DarkenAddonFrames(addon, data)
-    end
-  end
-
-  -- Turtle's ArenaFrame lives in FrameXML and normally already exists when
-  -- ShaguTweaks enables modules. Check immediately, then keep a tiny event
-  -- fallback for unusual client/load orders.
-  local function SetupArenaDarkening()
-    if not _G.ArenaFrame then return end
-
-    DarkenFrame(_G.ArenaFrame)
-
-    if not _G.ArenaFrame.ShaguTweaksDarkHook then
-      _G.ArenaFrame.ShaguTweaksDarkHook = true
-      ShaguTweaks.HookScript(_G.ArenaFrame, "OnShow", function()
-        DarkenFrame(_G.ArenaFrame)
+    for _, frame in pairs(data) do
+      local frame = frame
+      HookAddonOrVariable(frame, function()
+        DarkenFrame(_G[frame])
       end)
     end
   end
 
-  if _G.ArenaFrame then
-    SetupArenaDarkening()
-  else
-    local arenaWatcher = CreateFrame("Frame")
-    arenaWatcher:RegisterEvent("ADDON_LOADED")
-    arenaWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
-    arenaWatcher:SetScript("OnEvent", function()
-      if _G.ArenaFrame then
-        SetupArenaDarkening()
-        this:UnregisterAllEvents()
-      end
-    end)
-  end
+  -- Turtle's inspect talent tree is rebuilt by TWTalentFrame_Update().
+  -- Its four background textures have no texture assigned until that update,
+  -- so the initial DarkenFrame pass cannot tint them. Reapply dark mode after
+  -- each rebuild, without adding any permanent OnUpdate work.
+  HookAddonOrVariable("TWTalentFrame", function()
+    if not _G.TWTalentFrame or not _G.TWTalentFrame_Update then return end
+
+    if not _G.TWTalentFrame.ShaguTweaksDarkHook then
+      _G.TWTalentFrame.ShaguTweaksDarkHook = true
+      ShaguTweaks.hooksecurefunc("TWTalentFrame_Update", function()
+        DarkenFrame(_G.InspectTalentsFrame)
+        DarkenFrame(_G.TWTalentFrame)
+      end)
+    end
+
+    DarkenFrame(_G.InspectTalentsFrame)
+    DarkenFrame(_G.TWTalentFrame)
+  end)
 
   HookAddonOrVariable("Blizzard_TimeManager", function()
     DarkenFrame(TimeManagerClockButton)
