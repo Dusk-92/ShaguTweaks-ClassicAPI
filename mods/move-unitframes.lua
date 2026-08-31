@@ -125,8 +125,10 @@ module.enable = function(self)
     local pos = movedb[PositionKey(target, moveFrame)]
     if not pos or not pos[1] or not pos[2] then return end
 
-    moveFrame:SetMovable(true)
-    if moveFrame.SetUserPlaced then moveFrame:SetUserPlaced(true) end
+    if not target.cursorDrag then
+      moveFrame:SetMovable(true)
+      if moveFrame.SetUserPlaced then moveFrame:SetUserPlaced(true) end
+    end
     moveFrame:ClearAllPoints()
     moveFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pos[1], pos[2])
   end
@@ -260,13 +262,13 @@ module.enable = function(self)
       state.mouseEnabled = nil
     end
 
-    if moveFrame.IsMovable then
+    if not target.cursorDrag and moveFrame.IsMovable then
       state.movable = moveFrame:IsMovable() and true or false
     else
       state.movable = nil
     end
 
-    if moveFrame.IsUserPlaced then
+    if not target.cursorDrag and moveFrame.IsUserPlaced then
       state.userPlaced = moveFrame:IsUserPlaced() and true or false
     else
       state.userPlaced = nil
@@ -289,7 +291,7 @@ module.enable = function(self)
       MarkManual(target)
       SetDragging(target, true)
 
-      if moveFrame.SetUserPlaced then
+      if not target.cursorDrag and moveFrame.SetUserPlaced then
         moveFrame:SetUserPlaced(true)
       end
 
@@ -343,7 +345,8 @@ module.enable = function(self)
 
       -- A dragged frame remains user-placed. An untouched frame is restored
       -- exactly to the state it had before Ctrl+Shift was pressed.
-      if not state.dragged
+      if not target.cursorDrag
+        and not state.dragged
         and state.userPlaced ~= nil
         and moveFrame.SetUserPlaced then
         moveFrame:SetUserPlaced(state.userPlaced)
