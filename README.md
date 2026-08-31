@@ -104,6 +104,7 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 
 ### Chat & Social
 
+- Blue Shaman Class Colors
 - Chat Tweaks
 - Chat Levels
 - Chat Spam Filter
@@ -150,7 +151,6 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 The following original ShaguTweaks modules are not included as standalone modules because their functionality is either integrated elsewhere or no longer required:
 
 - **Chat Links** → integrated into **Chat Tweaks**
-- **Blue Shaman Class Colors** → no longer required; supported natively by Turtle WoW-like clients
 - **Movable Unit Frames Extended** → integrated into **Movable Unit Frames**
 
 ## 📜 Project identity & licensing
