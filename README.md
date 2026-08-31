@@ -33,6 +33,7 @@ Settings: **Esc → Advanced Options**.
 - Safer hooks and fewer destructive global overrides.
 - Expanded Item Rarity Borders support for merchant, quest, mail, trade, crafting and loot frames.
 - Added independent Item Rarity Glows using the shared item rarity engine.
+- Expanded Movable Unit Frames to handle Player, Target, Party, Minimap, Buffs, Debuffs and Weapon Buffs through one shared Ctrl+Shift mover and alignment grid.
 - Various stability fixes across legacy ShaguTweaks modules.
 
 ## 🔷 Mods using ClassicAPI directly
@@ -147,6 +148,7 @@ The following original ShaguTweaks modules are not included as standalone module
 - **Chat Links** → integrated into **Chat Tweaks**
 - **Real Health Numbers** → value display integrated into **Unit Frame Big Health**
 - **Blue Shaman Class Colors** → no longer required; supported natively by Turtle WoW-like clients
+- **Movable Unit Frames Extended** → integrated into **Movable Unit Frames**
 
 ## 🙏 Credits
 
@@ -157,5 +159,7 @@ Additional maintenance and Turtle WoW work by **paokkerkir**.
 ClassicAPI compatibility fork maintained by **Dusk-92**.
 
 Additional code and ideas from **pfUI** and **zUI**.
+
+Extended Movable Unit Frames support adapted from **TokensWorth/ShaguTweaks-mods**, originally released under MIT by **GryllsAddons**. See `THIRD_PARTY_NOTICES.md`.
 
 Released under the original **MIT License**.
