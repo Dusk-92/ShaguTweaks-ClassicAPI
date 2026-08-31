@@ -2,7 +2,7 @@ local T = ShaguTweaks.T
 
 local module = ShaguTweaks:register({
   title = T["XP Bar Text"],
-  description = T["Always shows current XP and rested bonus percentage directly on the experience bar."],
+  description = T["Shows current XP and rested bonus percentage while hovering over the experience bar."],
   expansions = { ["vanilla"] = true },
   category = T["Interface"],
   enabled = true,
@@ -25,6 +25,8 @@ module.enable = function(self)
   end
 
   local exp = self.exp
+  exp.hovered = false
+  exp.text:Hide()
 
   local function UpdateXPText()
     local curr = UnitXP("player")
@@ -54,7 +56,11 @@ module.enable = function(self)
       self.lastText = text
     end
 
-    if not exp.text:IsShown() then exp.text:Show() end
+    if exp.hovered then
+      if not exp.text:IsShown() then exp.text:Show() end
+    elseif exp.text:IsShown() then
+      exp.text:Hide()
+    end
   end
 
   if not self.events then
@@ -73,6 +79,22 @@ module.enable = function(self)
 
     UpdateXPText()
   end)
+
+  -- Reuse the XP bar's existing mouse handling instead of adding a permanent
+  -- OnUpdate or a mouse-enabled overlay on top of it.
+  if not self.mouseoverHooked then
+    self.mouseoverHooked = true
+
+    ShaguTweaks.HookScript(MainMenuExpBar, "OnEnter", function()
+      exp.hovered = true
+      UpdateXPText()
+    end)
+
+    ShaguTweaks.HookScript(MainMenuExpBar, "OnLeave", function()
+      exp.hovered = false
+      if exp.text:IsShown() then exp.text:Hide() end
+    end)
+  end
 
   -- Refresh immediately in case the module is enabled after entering the world.
   MainMenuBarOverlayFrame:Hide()
