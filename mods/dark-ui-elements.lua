@@ -87,13 +87,28 @@ local addonframes = {
   ["Blizzard_TalentUI"] = { "TalentFrame" },
   ["Blizzard_AuctionUI"] = { "AuctionFrame", "AuctionDressUpFrame" },
   ["Blizzard_CraftUI"] = { "CraftFrame" },
-  ["Blizzard_InspectUI"] = { "InspectPaperDollFrame", "InspectHonorFrame", "InspectFrameTab1", "InspectFrameTab2" },
+  ["Blizzard_InspectUI"] = {
+    "InspectPaperDollFrame",
+    "InspectHonorFrame",
+    "InspectFrameTab1",
+    "InspectFrameTab2",
+  },
   ["Blizzard_MacroUI"] = { "MacroFrame", "MacroPopupFrame" },
   ["Blizzard_RaidUI"] = { "ReadyCheckFrame" },
-  ["Blizzard_TalentUI"] = { "TalentFrame" },
   ["Blizzard_TradeSkillUI"] = { "TradeSkillFrame" },
   ["Blizzard_TrainerUI"] = { "ClassTrainerFrame" },
 }
+
+-- Turtle WoW exposes these extra inspect pages. Keep them out of the generic
+-- Vanilla path so missing Turtle-only frames don't leave compatibility lurkers
+-- registered for the whole session.
+local isTurtle = TargetHPText and TargetHPPercText
+if isTurtle then
+  table.insert(addonframes["Blizzard_InspectUI"], "InspectArenaFrame")
+  table.insert(addonframes["Blizzard_InspectUI"], "InspectTalentsFrame")
+  table.insert(addonframes["Blizzard_InspectUI"], "InspectFrameTab3")
+  table.insert(addonframes["Blizzard_InspectUI"], "InspectFrameTab4")
+end
 
 -- sizing is a bit different on tbc
 if GetExpansion() == "tbc" then
@@ -269,6 +284,26 @@ module.enable = function(self)
         DarkenFrame(_G[frame])
       end)
     end
+  end
+
+  -- Turtle's inspect talent tree is rebuilt by TWTalentFrame_Update().
+  -- Its background textures are assigned during that update, so the initial
+  -- InspectTalentsFrame pass may happen too early. Re-darken the parent after
+  -- each rebuild; it already contains TWTalentFrame, so one recursive scan is
+  -- sufficient and avoids traversing the same tree twice.
+  if isTurtle then
+    HookAddonOrVariable("TWTalentFrame", function()
+      if not _G.TWTalentFrame or not _G.TWTalentFrame_Update then return end
+
+      if not _G.TWTalentFrame.ShaguTweaksDarkHook then
+        _G.TWTalentFrame.ShaguTweaksDarkHook = true
+        ShaguTweaks.hooksecurefunc("TWTalentFrame_Update", function()
+          DarkenFrame(_G.InspectTalentsFrame or _G.TWTalentFrame)
+        end)
+      end
+
+      DarkenFrame(_G.InspectTalentsFrame or _G.TWTalentFrame)
+    end)
   end
 
   HookAddonOrVariable("Blizzard_TimeManager", function()
