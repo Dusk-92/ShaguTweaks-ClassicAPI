@@ -262,36 +262,86 @@ module.enable = function(self)
   end)
 
   -- Load-on-demand Blizzard windows are created after the initial UIParent
-  -- scan. Watch the actual addon name (not the frame variable) and darken all
-  -- of its known frames once the addon has finished loading.
-  for addon, data in pairs(addonframes) do
-    local addon = addon
-    local data = data
-    HookAddonOrVariable(addon, function()
+  -- scan. Handle ADDON_LOADED directly instead of relying on IsAddOnLoaded()
+  -- during the event, because Vanilla/Turtle can report it one step too late.
+  local function DarkenAddonFrames(addon, data, setup)
+    local watcher
+    local done
+
+    local function Apply()
+      local found
+
       for _, frameName in pairs(data) do
         local frame = _G[frameName]
-        if frame then DarkenFrame(frame) end
+        if frame then
+          found = true
+          DarkenFrame(frame)
+        end
       end
 
-      -- TalentFrame replaces/refreshes several textures whenever the selected
-      -- tree or talent state changes. Reapply dark mode after those updates;
-      -- this is event-driven and adds no permanent OnUpdate work.
-      if addon == "Blizzard_TalentUI"
-        and _G.TalentFrame
-        and _G.TalentFrame_Update
-        and not _G.TalentFrame.ShaguTweaksDarkHook then
-        _G.TalentFrame.ShaguTweaksDarkHook = true
-        ShaguTweaks.hooksecurefunc("TalentFrame_Update", function()
-          DarkenFrame(_G.TalentFrame)
-        end)
+      if not found then return end
+
+      if setup then setup() end
+      done = true
+      if watcher then watcher:UnregisterAllEvents() end
+    end
+
+    -- Most already-loaded addons/frames are handled immediately.
+    Apply()
+    if done then return end
+
+    watcher = CreateFrame("Frame")
+    watcher:RegisterEvent("ADDON_LOADED")
+    watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+    watcher:SetScript("OnEvent", function()
+      if (event == "ADDON_LOADED" and arg1 == addon) or _G[data[1]] then
+        Apply()
       end
     end)
   end
 
-  -- Turtle's ArenaFrame is part of FrameXML rather than a Blizzard
-  -- load-on-demand addon. Re-darken it when shown so its custom ArenaFrame
-  -- textures stay consistent with Character/Honor.
-  HookAddonOrVariable("ArenaFrame", function()
+  local function TintTalentBackgrounds()
+    local color = module.config["darkmode.color"]
+    local backgrounds = {
+      _G.TalentFrameBackgroundTopLeft,
+      _G.TalentFrameBackgroundTopRight,
+      _G.TalentFrameBackgroundBottomLeft,
+      _G.TalentFrameBackgroundBottomRight,
+    }
+
+    for _, texture in pairs(backgrounds) do
+      if texture then
+        texture:SetVertexColor(color.r, color.g, color.b, color.a)
+      end
+    end
+  end
+
+  local function SetupTalentDarkening()
+    if not _G.TalentFrame then return end
+
+    -- TalentFrame_Update replaces the four tree background textures on every
+    -- tree/state refresh. Tint only those refreshed textures afterwards instead
+    -- of rescanning the whole talent tree each time.
+    if _G.TalentFrame_Update and not _G.TalentFrame.ShaguTweaksDarkHook then
+      _G.TalentFrame.ShaguTweaksDarkHook = true
+      ShaguTweaks.hooksecurefunc("TalentFrame_Update", TintTalentBackgrounds)
+    end
+
+    TintTalentBackgrounds()
+  end
+
+  for addon, data in pairs(addonframes) do
+    if addon == "Blizzard_TalentUI" then
+      DarkenAddonFrames(addon, data, SetupTalentDarkening)
+    else
+      DarkenAddonFrames(addon, data)
+    end
+  end
+
+  -- Turtle's ArenaFrame lives in FrameXML and normally already exists when
+  -- ShaguTweaks enables modules. Check immediately, then keep a tiny event
+  -- fallback for unusual client/load orders.
+  local function SetupArenaDarkening()
     if not _G.ArenaFrame then return end
 
     DarkenFrame(_G.ArenaFrame)
@@ -302,7 +352,21 @@ module.enable = function(self)
         DarkenFrame(_G.ArenaFrame)
       end)
     end
-  end)
+  end
+
+  if _G.ArenaFrame then
+    SetupArenaDarkening()
+  else
+    local arenaWatcher = CreateFrame("Frame")
+    arenaWatcher:RegisterEvent("ADDON_LOADED")
+    arenaWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+    arenaWatcher:SetScript("OnEvent", function()
+      if _G.ArenaFrame then
+        SetupArenaDarkening()
+        this:UnregisterAllEvents()
+      end
+    end)
+  end
 
   HookAddonOrVariable("Blizzard_TimeManager", function()
     DarkenFrame(TimeManagerClockButton)
