@@ -20,6 +20,14 @@ module.enable = function(self)
 
   local movedb = ShaguTweaks_config["MoveUnitframes"]
 
+  -- Shared live state lets other modules (notably Enlarged Minimap) respect
+  -- manually positioned aura anchors without fighting the mover while dragging.
+  ShaguTweaks.MovableUnitFramesState = ShaguTweaks.MovableUnitFramesState or {
+    manual = {},
+    dragging = {},
+  }
+  local sharedState = ShaguTweaks.MovableUnitFramesState
+
   -- Preserve positions created by the former Extras module. The legacy table
   -- is intentionally left untouched so downgrading does not destroy data.
   local legacy = ShaguTweaks_config["MoveUnitframesExtended"]
@@ -30,6 +38,15 @@ module.enable = function(self)
       end
     end
   end
+
+  -- Existing saved positions already mean those groups were manually placed.
+  -- This also covers positions migrated from the former Extras module.
+  sharedState.manual.buffs = movedb["BuffButton0"] ~= nil
+  sharedState.manual.debuffs = movedb["BuffButton32"] ~= nil
+  sharedState.manual.weapon = movedb["TempEnchant1"] ~= nil
+  sharedState.dragging.buffs = false
+  sharedState.dragging.debuffs = false
+  sharedState.dragging.weapon = false
 
   local unlocked = false
   local states = {}
@@ -46,9 +63,9 @@ module.enable = function(self)
     { name = "PartyMemberFrame3", persist = true },
     { name = "PartyMemberFrame4", persist = true },
     { name = "Minimap", moveParent = true, persist = true },
-    { name = "BuffButton0", persist = true },
-    { name = "BuffButton32", persist = true },
-    { name = "TempEnchant1", persist = true },
+    { name = "BuffButton0", persist = true, manualGroup = "buffs" },
+    { name = "BuffButton32", persist = true, manualGroup = "debuffs" },
+    { name = "TempEnchant1", persist = true, manualGroup = "weapon" },
   }
 
   local function Resolve(target)
@@ -70,6 +87,18 @@ module.enable = function(self)
     return target.name
   end
 
+  local function SetDragging(target, value)
+    if target.manualGroup then
+      sharedState.dragging[target.manualGroup] = value and true or false
+    end
+  end
+
+  local function MarkManual(target)
+    if target.manualGroup then
+      sharedState.manual[target.manualGroup] = true
+    end
+  end
+
   local function SavePosition(target, moveFrame)
     if not target.persist then return end
 
@@ -84,6 +113,7 @@ module.enable = function(self)
     if not left or not top then return end
 
     movedb[PositionKey(target, moveFrame)] = { left, top }
+    MarkManual(target)
   end
 
   local function RestorePosition(target)
@@ -193,6 +223,8 @@ module.enable = function(self)
 
     handle:SetScript("OnDragStart", function()
       state.dragged = true
+      MarkManual(target)
+      SetDragging(target, true)
 
       if moveFrame.SetUserPlaced then
         moveFrame:SetUserPlaced(true)
@@ -207,6 +239,8 @@ module.enable = function(self)
       if state.dragged then
         SavePosition(target, moveFrame)
       end
+
+      SetDragging(target, false)
     end)
   end
 
@@ -219,6 +253,7 @@ module.enable = function(self)
 
     if moveFrame then
       moveFrame:StopMovingOrSizing()
+      SetDragging(target, false)
 
       if state.dragged then
         SavePosition(target, moveFrame)
