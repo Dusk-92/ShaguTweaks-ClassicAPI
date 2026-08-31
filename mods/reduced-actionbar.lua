@@ -96,6 +96,14 @@ module.enable = function(self)
   MainMenuXPBarTexture0:SetPoint("LEFT", MainMenuExpBar, "LEFT")
   MainMenuXPBarTexture1:SetPoint("RIGHT", MainMenuExpBar, "RIGHT")
 
+  -- Floating Actionbar removes the artwork that visually hides the uneven
+  -- spacing around the XP bar. Reduced Actionbar keeps a 3px gap above the
+  -- XP bar, so move the XP bar up by 3px to match that gap below as well.
+  if ShaguTweaks_config and ShaguTweaks_config[T["Floating Actionbar"]] == 1 then
+    MainMenuExpBar:ClearAllPoints()
+    MainMenuExpBar:SetPoint("TOP", MainMenuBar, "TOP", 0, 3)
+  end
+
   -- reputation bar
   ReputationWatchBar:SetPoint("BOTTOM", MainMenuExpBar, "TOP", 0, 0)
   ReputationWatchBarTexture0:SetPoint("LEFT", ReputationWatchBar, "LEFT")
