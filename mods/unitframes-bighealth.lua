@@ -26,6 +26,34 @@ module.enable = function(self)
   local eliteTexture = addonpath .. "\\img\\UI-TargetingFrame-Elite"
   local rareTexture = addonpath .. "\\img\\UI-TargetingFrame-Rare"
 
+  -- Darkened UI and Big Health can be enabled in either order because modules
+  -- are initialized from an unordered table. If Darkened UI ran first, Big
+  -- Health replaces the already-darkened textures with fresh bright ones.
+  -- Apply the configured dark tint directly to our replacement textures so the
+  -- result is deterministic without adding any permanent OnUpdate work.
+  local function ApplyDarkModeTextures()
+    if not ShaguTweaks.DarkMode then return end
+
+    local darkModule = ShaguTweaks.mods[T["Darkened UI"]]
+    local color = ShaguTweaks_config
+      and ShaguTweaks_config.overwrites
+      and ShaguTweaks_config.overwrites["darkmode.color"]
+
+    color = color
+      or (darkModule and darkModule.config and darkModule.config["darkmode.color"])
+
+    if not color then return end
+
+    local r = tonumber(color.r) or color.r
+    local g = tonumber(color.g) or color.g
+    local b = tonumber(color.b) or color.b
+    local a = tonumber(color.a) or color.a or 1
+
+    if PlayerFrameTexture then PlayerFrameTexture:SetVertexColor(r, g, b, a) end
+    if PlayerStatusTexture then PlayerStatusTexture:SetVertexColor(r, g, b, a) end
+    if TargetFrameTexture then TargetFrameTexture:SetVertexColor(r, g, b, a) end
+  end
+
   -- Big Health is presentation-only. Numeric health/power values are owned by
   -- the independent Real Health Numbers module.
   PlayerFrameTexture:SetTexture(normalTexture)
@@ -38,11 +66,12 @@ module.enable = function(self)
   TargetFrameHealthBar:SetPoint("TOPRIGHT", -106, -22)
   TargetFrameHealthBar:SetHeight(30)
 
+  ApplyDarkModeTextures()
+
   local world = CreateFrame("Frame")
   world:RegisterEvent("PLAYER_ENTERING_WORLD")
   world:SetScript("OnEvent", function()
-    ShaguTweaks.DarkenFrame(PlayerFrameTexture)
-    ShaguTweaks.DarkenFrame(TargetFrameTexture)
+    ApplyDarkModeTextures()
     this:UnregisterAllEvents()
   end)
 
@@ -64,6 +93,8 @@ module.enable = function(self)
       else
         TargetFrameTexture:SetTexture(normalTexture)
       end
+
+      ApplyDarkModeTextures()
     end
 
     hooksecurefunc("TargetFrame_CheckClassification", UpdateTargetClassificationTexture)
