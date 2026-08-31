@@ -40,6 +40,7 @@ libs\libdebuff.lua
 libs\libunitscan.lua
 libs\libnameplate.lua
 libs\libpredict.lua
+libs\libhealth.lua
 
 # custom
 mods\custom.lua
@@ -80,6 +81,7 @@ mods\chat-spam-filter.lua
 mods\hide-gryphons.lua
 mods\worldmap-colors.lua
 mods\unitframes-bighealth.lua
+mods\health-numbers.lua
 mods\unitframes-classportrait.lua
 mods\unitframes-energy-tick.lua
 mods\cooldown-numbers.lua
