@@ -47,6 +47,7 @@ mods\custom.lua
 
 # modules
 mods\dark-ui-elements.lua
+mods\blue-shaman.lua
 mods\equip-compare.lua
 mods\minimap-clock.lua
 mods\minimap-square.lua
