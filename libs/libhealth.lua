@@ -89,7 +89,7 @@ local function GetMissingHealthEstimate(unitstr, cur, max)
   if not missing or missing <= 0 or lostPercent <= 0 then return end
 
   local estimatedMax = ceil(missing / lostPercent * 100)
-  if estimatedMax <= 100 then return end
+  if estimatedMax < 100 then return end
 
   local estimatedCur = estimatedMax - missing
   if estimatedCur < 0 then estimatedCur = 0 end
@@ -98,6 +98,10 @@ local function GetMissingHealthEstimate(unitstr, cur, max)
 end
 
 function libhealth:GetUnitHealth(unitstr)
+  -- Preserve the old public library behavior for external consumers while
+  -- keeping the estimator lazy: the first actual query activates it.
+  if not self.enabled then self:Enable() end
+
   local cur = _G.UnitHealth(unitstr)
   local max = _G.UnitHealthMax(unitstr)
 
@@ -118,6 +122,8 @@ function libhealth:GetUnitHealth(unitstr)
 end
 
 function libhealth:GetUnitHealthByName(name, level, cur, max)
+  if not self.enabled then self:Enable() end
+
   if not cur or not max then return cur or 0, max or 0 end
 
   if cur > 100 or max > 100 or max < 100 then
