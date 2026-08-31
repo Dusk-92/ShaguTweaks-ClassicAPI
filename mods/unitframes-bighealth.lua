@@ -26,6 +26,8 @@ module.enable = function(self)
   local eliteTexture = addonpath .. "\\img\\UI-TargetingFrame-Elite"
   local rareTexture = addonpath .. "\\img\\UI-TargetingFrame-Rare"
 
+  -- Big Health is presentation-only. Numeric health/power values are owned by
+  -- the independent Real Health Numbers module.
   PlayerFrameTexture:SetTexture(normalTexture)
   PlayerFrameHealthBar:SetPoint("TOPLEFT", 106, -22)
   PlayerFrameHealthBar:SetHeight(30)
@@ -36,8 +38,6 @@ module.enable = function(self)
   TargetFrameHealthBar:SetPoint("TOPRIGHT", -106, -22)
   TargetFrameHealthBar:SetHeight(30)
 
-  -- Dark mode is applied after the world has loaded. Keep this event separate
-  -- from the one-frame deferred setup so the event cannot be unregistered early.
   local world = CreateFrame("Frame")
   world:RegisterEvent("PLAYER_ENTERING_WORLD")
   world:SetScript("OnEvent", function()
@@ -47,7 +47,7 @@ module.enable = function(self)
   end)
 
   -- Delay hook installation by one frame so all enabled unit-frame modules have
-  -- finished their setup first. This keeps hooks attached to the final handlers.
+  -- finished their setup first. This keeps hooks attached to final handlers.
   local deferred = CreateFrame("Frame")
   deferred:SetScript("OnUpdate", function()
     this:SetScript("OnUpdate", nil)
@@ -55,7 +55,9 @@ module.enable = function(self)
 
     local function UpdateTargetClassificationTexture()
       local classification = UnitClassification("target")
-      if classification == "worldboss" or classification == "rareelite" or classification == "elite" then
+      if classification == "worldboss"
+        or classification == "rareelite"
+        or classification == "elite" then
         TargetFrameTexture:SetTexture(eliteTexture)
       elseif classification == "rare" then
         TargetFrameTexture:SetTexture(rareTexture)
@@ -64,155 +66,7 @@ module.enable = function(self)
       end
     end
 
-    -- Let Blizzard and other addons finish classification handling, then apply
-    -- the matching Big Health texture instead of replacing the global function.
     hooksecurefunc("TargetFrame_CheckClassification", UpdateTargetClassificationTexture)
-
-    -- Big Health owns the compact value display while enabled. Keep Blizzard /
-    -- Turtle status texts alive for compatibility, but make them invisible so
-    -- their current/max or percent formats cannot overlap our centered values.
-    local nativeTexts = {
-      PlayerFrameHealthBar.TextString,
-      PlayerFrameManaBar.TextString,
-      TargetFrameHealthBar.TextString,
-      TargetFrameManaBar.TextString,
-      _G.PlayerFrameAlternatePowerBarText,
-      _G.TargetHPText,
-      _G.TargetHPPercText,
-    }
-
-    for _, text in pairs(nativeTexts) do
-      if text then text:SetAlpha(0) end
-    end
-
-    if not self.valueTexts then
-      self.valueTexts = {}
-
-      local function CreateValueText(parent, anchor, y)
-        local text = parent:CreateFontString(nil, "OVERLAY", "GameFontWhite")
-        -- Match the compact unit-frame number style used by the former
-        -- health-numbers module: Friz Quadrata, 10px, outlined.
-        text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        text:SetHeight(32)
-        text:ClearAllPoints()
-        text:SetPoint("CENTER", anchor, "CENTER", 0, y or 0)
-        text:SetJustifyH("CENTER")
-        text:SetTextColor(1, 1, 1, 1)
-        return text
-      end
-
-      self.valueTexts.playerHealth = CreateValueText(PlayerFrameHealthBar, PlayerFrameHealthBar, -7)
-      self.valueTexts.playerMana = CreateValueText(PlayerFrameManaBar, PlayerFrameManaBar, 0)
-      self.valueTexts.targetHealth = CreateValueText(TargetFrameHealthBar, TargetFrameHealthBar, -7)
-      self.valueTexts.targetMana = CreateValueText(TargetFrameManaBar, TargetFrameManaBar, 0)
-
-      if _G.PlayerFrameAlternatePowerBar then
-        self.valueTexts.playerAlternatePower = CreateValueText(
-          _G.PlayerFrameAlternatePowerBar,
-          _G.PlayerFrameAlternatePowerBar,
-          0
-        )
-      end
-    end
-
-    local function UpdateValueText(text, unit, power)
-      if unit == "target" and not UnitExists("target") then
-        text:Hide()
-        return
-      end
-
-      local value
-      local max
-      if power == "health" then
-        value = UnitHealth(unit)
-        max = UnitHealthMax(unit)
-      else
-        value = UnitMana(unit)
-        max = UnitManaMax(unit)
-      end
-
-      if not max or max <= 0 then
-        text:Hide()
-        return
-      end
-
-      text:SetText(tostring(value or 0))
-      text:Show()
-    end
-
-    local function UpdateUnitValues(unit)
-      if unit == "player" then
-        UpdateValueText(self.valueTexts.playerHealth, "player", "health")
-        UpdateValueText(self.valueTexts.playerMana, "player", "power")
-      elseif unit == "target" then
-        UpdateValueText(self.valueTexts.targetHealth, "target", "health")
-        UpdateValueText(self.valueTexts.targetMana, "target", "power")
-      end
-    end
-
-    if not self.valueEvents then
-      self.valueEvents = CreateFrame("Frame")
-      self.valueEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
-      self.valueEvents:RegisterEvent("PLAYER_TARGET_CHANGED")
-      self.valueEvents:RegisterEvent("UNIT_HEALTH")
-      self.valueEvents:RegisterEvent("UNIT_MAXHEALTH")
-      self.valueEvents:RegisterEvent("UNIT_MANA")
-      self.valueEvents:RegisterEvent("UNIT_MAXMANA")
-      self.valueEvents:RegisterEvent("UNIT_RAGE")
-      self.valueEvents:RegisterEvent("UNIT_MAXRAGE")
-      self.valueEvents:RegisterEvent("UNIT_ENERGY")
-      self.valueEvents:RegisterEvent("UNIT_MAXENERGY")
-      self.valueEvents:RegisterEvent("UNIT_FOCUS")
-      self.valueEvents:RegisterEvent("UNIT_MAXFOCUS")
-      self.valueEvents:RegisterEvent("UNIT_HAPPINESS")
-      self.valueEvents:RegisterEvent("UNIT_MAXHAPPINESS")
-      self.valueEvents:RegisterEvent("UNIT_DISPLAYPOWER")
-
-      self.valueEvents:SetScript("OnEvent", function()
-        if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_TARGET_CHANGED" then
-          UpdateUnitValues("player")
-          UpdateUnitValues("target")
-        elseif arg1 == "player" or arg1 == "target" then
-          UpdateUnitValues(arg1)
-        end
-      end)
-    end
-
-    UpdateUnitValues("player")
-    UpdateUnitValues("target")
-
-    -- Turtle WoW exposes a native alternate power bar for druids while
-    -- shapeshifted. It stores caster mana separately from the active rage/energy
-    -- value. Keep the native bar and only replace its text presentation.
-    local alternatePowerBar = _G.PlayerFrameAlternatePowerBar
-    if alternatePowerBar and self.valueTexts.playerAlternatePower then
-      local function UpdateAlternatePowerValue()
-        local text = self.valueTexts.playerAlternatePower
-
-        if not alternatePowerBar:IsShown() then
-          text:Hide()
-          return
-        end
-
-        local value = alternatePowerBar:GetValue() or 0
-        local _, max = alternatePowerBar:GetMinMaxValues()
-
-        if not max or max <= 0 then
-          text:Hide()
-          return
-        end
-
-        text:SetText(tostring(math.floor(value + 0.5)))
-        text:Show()
-      end
-
-      -- Turtle updates this bar from UnitFrameManaBar_Update using the second
-      -- UnitMana / UnitManaMax return values. Refresh after that native write.
-      hooksecurefunc(alternatePowerBar, "SetValue", UpdateAlternatePowerValue)
-      hooksecurefunc(alternatePowerBar, "Show", UpdateAlternatePowerValue)
-
-      UpdateAlternatePowerValue()
-    end
 
     local playerSetStatusBarColor = PlayerFrameHealthBar.SetStatusBarColor
     local targetSetStatusBarColor = TargetFrameHealthBar.SetStatusBarColor
@@ -249,11 +103,8 @@ module.enable = function(self)
       ApplyTargetHealthColor()
     end
 
-    -- Reapply the target health color after faction/class-color updates.
     hooksecurefunc("TargetFrame_CheckFaction", ApplyTargetHealthColor)
 
-    -- Refresh once because the target frame may already have been initialized
-    -- before this deferred setup ran.
     UpdateTargetClassificationTexture()
     TargetFrame_CheckFaction()
   end)

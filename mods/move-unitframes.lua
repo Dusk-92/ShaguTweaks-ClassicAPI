@@ -63,9 +63,9 @@ module.enable = function(self)
     { name = "PartyMemberFrame3", persist = true },
     { name = "PartyMemberFrame4", persist = true },
     { name = "Minimap", moveParent = true, persist = true },
-    { name = "BuffButton0", persist = true, manualGroup = "buffs" },
-    { name = "BuffButton32", persist = true, manualGroup = "debuffs" },
-    { name = "TempEnchant1", persist = true, manualGroup = "weapon" },
+    { name = "BuffButton0", persist = true, manualGroup = "buffs", cursorDrag = true },
+    { name = "BuffButton32", persist = true, manualGroup = "debuffs", cursorDrag = true },
+    { name = "TempEnchant1", persist = true, manualGroup = "weapon", cursorDrag = true },
   }
 
   local function Resolve(target)
@@ -130,6 +130,65 @@ module.enable = function(self)
     moveFrame:ClearAllPoints()
     moveFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pos[1], pos[2])
   end
+
+  -- Aura buttons are layout-owned frames on some Vanilla/Turtle UI builds.
+  -- Calling StartMoving() on them can fail with "Frame ... is not movable or
+  -- resizable" even after SetMovable(true). For those frames, follow the cursor
+  -- ourselves and only change their anchor; regular unit frames still use the
+  -- native StartMoving path.
+  local cursorDrag = CreateFrame("Frame")
+  cursorDrag:Hide()
+
+  local function CursorPosition()
+    local x, y = GetCursorPosition()
+    local scale = UIParent:GetEffectiveScale()
+    if not scale or scale <= 0 then scale = 1 end
+    return x / scale, y / scale
+  end
+
+  local function StartCursorDrag(state, target, moveFrame)
+    local left = moveFrame:GetLeft()
+    local top = moveFrame:GetTop()
+    if not left or not top then return false end
+
+    local x, y = CursorPosition()
+    state.cursorStartX = x
+    state.cursorStartY = y
+    state.frameStartLeft = left
+    state.frameStartTop = top
+
+    cursorDrag.state = state
+    cursorDrag.target = target
+    cursorDrag.moveFrame = moveFrame
+    cursorDrag:Show()
+    return true
+  end
+
+  local function StopCursorDrag(state)
+    if cursorDrag.state ~= state then return end
+
+    cursorDrag:Hide()
+    cursorDrag.state = nil
+    cursorDrag.target = nil
+    cursorDrag.moveFrame = nil
+  end
+
+  cursorDrag:SetScript("OnUpdate", function()
+    local state = this.state
+    local target = this.target
+    local moveFrame = this.moveFrame
+    if not state or not target or not moveFrame then
+      this:Hide()
+      return
+    end
+
+    local x, y = CursorPosition()
+    local left = state.frameStartLeft + (x - state.cursorStartX)
+    local top = state.frameStartTop + (y - state.cursorStartY)
+
+    moveFrame:ClearAllPoints()
+    moveFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+  end)
 
   local function CreateGrid()
     if grid then return grid end
@@ -217,7 +276,11 @@ module.enable = function(self)
       moveFrame:SetClampedToScreen(true)
     end
 
-    moveFrame:SetMovable(true)
+    -- Aura buttons can reject StartMoving() on some clients. They only need
+    -- mouse/drag scripts because cursorDrag handles their position directly.
+    if not target.cursorDrag then
+      moveFrame:SetMovable(true)
+    end
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")
 
@@ -230,11 +293,22 @@ module.enable = function(self)
         moveFrame:SetUserPlaced(true)
       end
 
-      moveFrame:StartMoving()
+      if target.cursorDrag then
+        if not StartCursorDrag(state, target, moveFrame) then
+          state.dragged = false
+          SetDragging(target, false)
+        end
+      else
+        moveFrame:StartMoving()
+      end
     end)
 
     handle:SetScript("OnDragStop", function()
-      moveFrame:StopMovingOrSizing()
+      if target.cursorDrag then
+        StopCursorDrag(state)
+      else
+        moveFrame:StopMovingOrSizing()
+      end
 
       if state.dragged then
         SavePosition(target, moveFrame)
@@ -252,14 +326,18 @@ module.enable = function(self)
     local moveFrame = state.moveFrame
 
     if moveFrame then
-      moveFrame:StopMovingOrSizing()
+      if target.cursorDrag then
+        StopCursorDrag(state)
+      else
+        moveFrame:StopMovingOrSizing()
+      end
       SetDragging(target, false)
 
       if state.dragged then
         SavePosition(target, moveFrame)
       end
 
-      if state.movable ~= nil then
+      if not target.cursorDrag and state.movable ~= nil then
         moveFrame:SetMovable(state.movable)
       end
 
