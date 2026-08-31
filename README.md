@@ -153,6 +153,19 @@ The following original ShaguTweaks modules are not included as standalone module
 - **Blue Shaman Class Colors** → no longer required; supported natively by Turtle WoW-like clients
 - **Movable Unit Frames Extended** → integrated into **Movable Unit Frames**
 
+## 📜 Project identity & licensing
+
+This is an independent community project. Compatibility with **World of Warcraft**, **Turtle WoW-like environments**, **ClassicAPI**, **SuperWoW**, or other referenced projects does not imply affiliation, endorsement, sponsorship, or ownership by their respective rights holders or maintainers.
+
+**World of Warcraft** and **Blizzard Entertainment** names, marks, and game assets remain the property of their respective rights holders.
+
+For detailed provenance and licensing information, see:
+
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- [PROJECT_IDENTITY.md](PROJECT_IDENTITY.md)
+- [Docs/ASSET_PROVENANCE.md](Docs/ASSET_PROVENANCE.md)
+- [LICENSES/](LICENSES/)
+
 ## 🙏 Credits
 
 Original addon and modules by **Shagu**.
