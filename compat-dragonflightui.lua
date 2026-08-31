@@ -35,6 +35,7 @@ local Compat = ShaguTweaks.DragonflightUICompat
 Compat.active = false
 Compat.coreInjected = Compat.coreInjected or 0
 Compat.extrasInjected = Compat.extrasInjected or 0
+Compat.extrasRecovered = Compat.extrasRecovered or 0
 Compat.legacyHits = Compat.legacyHits or 0
 
 -- DragonflightUI still indexes the old Extras energy-tick module name
@@ -189,6 +190,32 @@ local function IsExtrasModule(title, mod)
   return string.find(category, "Extras ClassicAPI:", 1, true) ~= nil
 end
 
+local function ExtrasLoaded()
+  return IsAddOnLoaded
+    and IsAddOnLoaded("ShaguTweaks-extras")
+    and true or false
+end
+
+-- DragonflightUI has two separate ADDON_LOADED listeners: one records that
+-- ShaguTweaks-extras is loaded and another builds its Shagu metadata. On some
+-- clients the metadata listener can run first, permanently leaving
+-- shaguExtras/shaguExtrasData unset even though addon2 becomes true moments
+-- later. Recover that state from WoW's authoritative addon-loaded flag before
+-- DragonflightUI builds the settings page.
+function Compat:RecoverExtrasMetadata()
+  if not DFRL or not DFRL.gui or not ExtrasLoaded() then return false end
+
+  DFRL.addon2 = true
+
+  if not DFRL.gui.shaguExtrasData then
+    DFRL.gui.shaguExtrasData = {}
+    self.extrasRecovered = self.extrasRecovered + 1
+  end
+
+  DFRL.gui.shaguExtras = true
+  return true
+end
+
 function Compat:InjectCore()
   if not DFRL or not DFRL.gui or not DFRL.gui.shaguCoreData then return 0 end
 
@@ -253,6 +280,9 @@ function Compat:InstallDragonflightHooks()
   if not DFRL or not DFRL.gui then return end
   self.active = true
 
+  -- Repair DragonflightUI's Extras metadata race before any injection attempt.
+  self:RecoverExtrasMetadata()
+
   -- DragonflightUI builds the ShaguTweaks page from its config-ready callback.
   -- Insert our metadata immediately before that page is drawn.
   if DFRL.shagu
@@ -293,6 +323,7 @@ local watcher = CreateFrame("Frame")
 watcher:RegisterEvent("ADDON_LOADED")
 watcher:RegisterEvent("VARIABLES_LOADED")
 watcher.elapsed = 0
+watcher.retries = 0
 
 watcher:SetScript("OnEvent", function()
   if event == "ADDON_LOADED" then
@@ -309,9 +340,20 @@ watcher:SetScript("OnUpdate", function()
   if this.elapsed < 0.25 then return end
 
   this.elapsed = 0
+  this.retries = this.retries + 1
   Compat:InstallDragonflightHooks()
 
-  if Compat.active and Compat.configCallbackHooked and Compat.extrasBuilderHooked then
+  -- Newer DragonflightUI versions don't expose configCallbacks or
+  -- shaguBuildExtras, so the old hook-based stop condition could poll forever.
+  -- Stop once the core metadata exists and Extras is either absent or repaired.
+  local coreReady = DFRL and DFRL.gui and DFRL.gui.shaguCoreData
+  local extrasReady = not ExtrasLoaded()
+    or (DFRL and DFRL.gui and DFRL.gui.shaguExtrasData)
+
+  if Compat.active and coreReady and extrasReady then
+    this:SetScript("OnUpdate", nil)
+  elseif this.retries >= 40 then
+    -- Never leave a permanent compatibility poll running on unusual loadouts.
     this:SetScript("OnUpdate", nil)
   end
 end)
