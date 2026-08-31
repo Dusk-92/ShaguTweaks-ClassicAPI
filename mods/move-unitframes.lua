@@ -104,18 +104,25 @@ module.enable = function(self)
   local function CreateGrid()
     if grid then return grid end
 
-    grid = CreateFrame("Frame", nil, WorldFrame)
-    grid:SetAllPoints(WorldFrame)
+    -- The movers themselves are positioned in UIParent coordinates, so the
+    -- alignment grid must use that exact same coordinate space. The old
+    -- WorldFrame/GetScreenWidth mix could shift the visual center when UI
+    -- scale or aspect ratio differed from the raw screen dimensions.
+    grid = CreateFrame("Frame", nil, UIParent)
+    grid:SetAllPoints(UIParent)
     grid:Hide()
 
     local size = 1
-    local width = GetScreenWidth()
-    local height = GetScreenHeight()
-    local ratio = width / height
-    local adjustedHeight = height * ratio
-    local wStep = width / 64
-    local hStep = adjustedHeight / 64
+    local width = UIParent:GetWidth()
+    local height = UIParent:GetHeight()
 
+    if not width or width <= 0 then width = GetScreenWidth() end
+    if not height or height <= 0 then height = GetScreenHeight() end
+
+    local wStep = width / 64
+    local hStep = height / 64
+
+    -- 65 lines gives 64 equal columns. Line 32 is exactly UIParent's center.
     for i = 0, 64 do
       local line = grid:CreateTexture(nil, i == 32 and "BORDER" or "BACKGROUND")
 
@@ -129,13 +136,12 @@ module.enable = function(self)
       line:SetPoint("BOTTOMRIGHT", grid, "BOTTOMLEFT", i * wStep + (size / 2), 0)
     end
 
-    local rows = floor(height / hStep)
-    local middle = floor(rows / 2)
+    -- Same principle vertically: 65 lines / 64 rows, with line 32 at the
+    -- exact vertical midpoint instead of deriving row count from screen ratio.
+    for i = 0, 64 do
+      local line = grid:CreateTexture(nil, i == 32 and "BORDER" or "BACKGROUND")
 
-    for i = 1, rows do
-      local line = grid:CreateTexture(nil, i == middle and "BORDER" or "BACKGROUND")
-
-      if i == middle then
+      if i == 32 then
         line:SetTexture(.8, .6, 0)
       else
         line:SetTexture(0, 0, 0, .2)
