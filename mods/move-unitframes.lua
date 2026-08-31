@@ -104,51 +104,47 @@ module.enable = function(self)
   local function CreateGrid()
     if grid then return grid end
 
-    -- The movers themselves are positioned in UIParent coordinates, so the
-    -- alignment grid must use that exact same coordinate space. The old
-    -- WorldFrame/GetScreenWidth mix could shift the visual center when UI
-    -- scale or aspect ratio differed from the raw screen dimensions.
-    grid = CreateFrame("Frame", nil, UIParent)
-    grid:SetAllPoints(UIParent)
+    -- Keep the original WorldFrame coordinate space so the cells retain the
+    -- same visual size as the old grid. Instead of deriving the yellow center
+    -- lines from top-left offsets, build the whole grid symmetrically around
+    -- WorldFrame:CENTER. This guarantees the two yellow axes are truly centered
+    -- regardless of UI scale / widescreen coordinate quirks.
+    grid = CreateFrame("Frame", nil, WorldFrame)
+    grid:SetAllPoints(WorldFrame)
     grid:Hide()
 
     local size = 1
-    local width = UIParent:GetWidth()
-    local height = UIParent:GetHeight()
+    local step = GetScreenWidth() / 64
 
-    if not width or width <= 0 then width = GetScreenWidth() end
-    if not height or height <= 0 then height = GetScreenHeight() end
+    -- Vertical lines: 32 cells to the left and right of the exact center.
+    for i = -32, 32 do
+      local line = grid:CreateTexture(nil, i == 0 and "BORDER" or "BACKGROUND")
 
-    local wStep = width / 64
-    local hStep = height / 64
-
-    -- 65 lines gives 64 equal columns. Line 32 is exactly UIParent's center.
-    for i = 0, 64 do
-      local line = grid:CreateTexture(nil, i == 32 and "BORDER" or "BACKGROUND")
-
-      if i == 32 then
+      if i == 0 then
         line:SetTexture(.8, .6, 0)
       else
         line:SetTexture(0, 0, 0, .2)
       end
 
-      line:SetPoint("TOPLEFT", grid, "TOPLEFT", i * wStep - (size / 2), 0)
-      line:SetPoint("BOTTOMRIGHT", grid, "BOTTOMLEFT", i * wStep + (size / 2), 0)
+      line:SetWidth(size)
+      line:SetPoint("TOP", grid, "TOP", i * step, 0)
+      line:SetPoint("BOTTOM", grid, "BOTTOM", i * step, 0)
     end
 
-    -- Same principle vertically: 65 lines / 64 rows, with line 32 at the
-    -- exact vertical midpoint instead of deriving row count from screen ratio.
-    for i = 0, 64 do
-      local line = grid:CreateTexture(nil, i == 32 and "BORDER" or "BACKGROUND")
+    -- Use the exact same step vertically so every cell remains square, as in
+    -- the original implementation. Extra off-screen lines are harmless.
+    for i = -32, 32 do
+      local line = grid:CreateTexture(nil, i == 0 and "BORDER" or "BACKGROUND")
 
-      if i == 32 then
+      if i == 0 then
         line:SetTexture(.8, .6, 0)
       else
         line:SetTexture(0, 0, 0, .2)
       end
 
-      line:SetPoint("TOPLEFT", grid, "TOPLEFT", 0, -(i * hStep) + (size / 2))
-      line:SetPoint("BOTTOMRIGHT", grid, "TOPRIGHT", 0, -(i * hStep + size / 2))
+      line:SetHeight(size)
+      line:SetPoint("LEFT", grid, "LEFT", 0, i * step)
+      line:SetPoint("RIGHT", grid, "RIGHT", 0, i * step)
     end
 
     return grid
