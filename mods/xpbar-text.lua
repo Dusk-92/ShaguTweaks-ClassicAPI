@@ -2,7 +2,7 @@ local T = ShaguTweaks.T
 
 local module = ShaguTweaks:register({
   title = T["XP Bar Text"],
-  description = T["Always shows current XP and rested bonus percentage directly on the experience bar."],
+  description = T["Shows current XP and rested bonus percentage while hovering over the experience bar."],
   expansions = { ["vanilla"] = true },
   category = T["Interface"],
   enabled = true,
