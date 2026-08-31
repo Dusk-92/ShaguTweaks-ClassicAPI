@@ -339,17 +339,19 @@ module.enable = function(self)
         SavePosition(target, moveFrame)
       end
 
-      if not target.cursorDrag and state.movable ~= nil then
-        moveFrame:SetMovable(state.movable)
-      end
-
-      -- A dragged frame remains user-placed. An untouched frame is restored
-      -- exactly to the state it had before Ctrl+Shift was pressed.
+      -- Restore UserPlaced while the frame is still temporarily movable.
+      -- Some Vanilla/Turtle frames (notably MinimapCluster) reject
+      -- SetUserPlaced() after SetMovable(false), which caused repeated
+      -- "not movable or resizable" errors when releasing Ctrl+Shift.
       if not target.cursorDrag
         and not state.dragged
         and state.userPlaced ~= nil
         and moveFrame.SetUserPlaced then
         moveFrame:SetUserPlaced(state.userPlaced)
+      end
+
+      if not target.cursorDrag and state.movable ~= nil then
+        moveFrame:SetMovable(state.movable)
       end
     end
 
