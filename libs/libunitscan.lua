@@ -71,6 +71,24 @@ local function MergePlayerData(target, source)
   end
 end
 
+local function NormalizePlayerData(data)
+  if type(data) ~= "table" then return end
+
+  -- The old per-character Social Colors cache stored presentation strings.
+  -- Those can depend on the current character (level difficulty colors and
+  -- optional class-color tweaks), so never keep them once the raw facts needed
+  -- to rebuild the display are available in the shared account cache.
+  if data.class then
+    data.cname = nil
+    data.cclass = nil
+  end
+
+  local level = tonumber(data.level)
+  if level and level > 0 then
+    data.clevel = nil
+  end
+end
+
 local function MergePlayerTable(target, source)
   if type(source) ~= "table" or source == target then return end
 
@@ -81,6 +99,8 @@ local function MergePlayerTable(target, source)
       else
         MergePlayerData(target[name], data)
       end
+
+      NormalizePlayerData(target[name])
     end
   end
 end
