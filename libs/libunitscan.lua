@@ -228,8 +228,9 @@ local function RememberPlayer(name)
   units.players[name] = units.players[name] or {}
   units.players[name].class = class or units.players[name].class
   units.players[name].guid = guid or units.players[name].guid
-  units.players[name].lastseen = date("%a %d-%b-%Y")
-  units.players[name].lastseen_ts = time()
+  local now = time()
+  units.players[name].lastseen = now
+  units.players[name].lastseen_ts = now
 end
 
 local function PrunePassivePlayers()
