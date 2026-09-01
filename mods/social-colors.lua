@@ -31,6 +31,30 @@ local function FormatLastSeen(lastseen)
   return lastseen
 end
 
+local function GetCachedFriendDisplay(data, name)
+  if type(data) ~= "table" then return end
+
+  local cname
+  local classColor = data.class and RAID_CLASS_COLORS[data.class]
+  if classColor then
+    cname = rgbhex(classColor) .. name .. "|r"
+  else
+    -- Legacy migration fallback until this friend is seen again.
+    cname = data.cname
+  end
+
+  local clevel
+  local level = tonumber(data.level)
+  if level and level > 0 then
+    clevel = rgbhex(GetDifficultyColor(level)) .. level .. "|r"
+  else
+    -- Legacy migration fallback until a raw level is learned.
+    clevel = data.clevel
+  end
+
+  return cname, clevel
+end
+
 local function CleanupPlayerDB(playerdb, realmdb)
   if not time then return end
 
@@ -163,7 +187,7 @@ module.enable = function(self)
   socialmod:SetScript("OnEvent", function()
     local currentdb = GetPlayerCache()
     local name = cmatch(arg1, _G.ERR_FRIEND_ONLINE_SS) or cmatch(arg1, _G.ERR_FRIEND_OFFLINE_S)
-    if name and currentdb[name] and currentdb[name].cname then
+    if name and currentdb[name] then
       TouchPlayer(currentdb[name])
     end
   end)
@@ -254,9 +278,14 @@ module.enable = function(self)
             playerdb[name] = playerdb[name] or {}
             TouchPlayer(playerdb[name])
             playerdb[name].class = classToken or playerdb[name].class
-            playerdb[name].cname = cname
-            playerdb[name].clevel = clevel
-            playerdb[name].cclass = ccolor
+            playerdb[name].level = tonumber(level) or playerdb[name].level
+
+            -- Shared SavedVariables keep raw player facts only. Rebuild colors
+            -- for the current character instead of persisting character-specific
+            -- presentation strings account-wide.
+            playerdb[name].cname = nil
+            playerdb[name].clevel = nil
+            playerdb[name].cclass = nil
           end
 
           if friendName then
@@ -270,9 +299,11 @@ module.enable = function(self)
           caption:SetVertexColor(1,1,1,.9)
           friendInfo:SetVertexColor(1,1,1,.9)
         else
-          if playerdb[name] and playerdb[name].cname and playerdb[name].clevel and playerdb[name].lastseen then
-            caption:SetText(format(TEXT(FRIENDS_LIST_OFFLINE_TEMPLATE), playerdb[name].cname))
-            friendInfo:SetText(format(TEXT(friendinfo), playerdb[name].clevel, FormatLastSeen(playerdb[name].lastseen), ""))
+          local data = playerdb[name]
+          local cachedName, cachedLevel = GetCachedFriendDisplay(data, name)
+          if data and cachedName and cachedLevel and data.lastseen then
+            caption:SetText(format(TEXT(FRIENDS_LIST_OFFLINE_TEMPLATE), cachedName))
+            friendInfo:SetText(format(TEXT(friendinfo), cachedLevel, FormatLastSeen(data.lastseen), ""))
           else
             caption:SetText(format(TEXT(FRIENDS_LIST_OFFLINE_TEMPLATE), name.."|r"))
             friendInfo:SetText(TEXT(UNKNOWN))
