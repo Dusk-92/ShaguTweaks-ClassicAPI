@@ -8,6 +8,57 @@ local GetExpansion = ShaguTweaks.GetExpansion
 local cmatch = ShaguTweaks.cmatch
 local rgbhex = ShaguTweaks.rgbhex
 local friendinfo = gsub(gsub(FRIENDS_LEVEL_TEMPLATE,"%%s","%%s %%s"),"%%d","%%s")
+local PLAYER_CACHE_MAX_AGE = 180 * 24 * 60 * 60
+
+local function TouchPlayer(entry)
+  if not entry then return end
+
+  if time then
+    entry.lastseen = time()
+  else
+    entry.lastseen = date("%a %d-%b-%Y")
+  end
+end
+
+local function FormatLastSeen(lastseen)
+  if type(lastseen) == "number" then
+    return date("%a %d-%b-%Y", lastseen)
+  end
+
+  return lastseen
+end
+
+local function CleanupPlayerDB(playerdb)
+  if not time then return end
+
+  local now = time()
+  local lastCleanup = tonumber(ShaguTweaks_cache["players_cleanup"]) or 0
+
+  -- Start the 180-day grace period without touching existing cache entries.
+  -- Players seen during that period are migrated to numeric timestamps.
+  if lastCleanup == 0 then
+    ShaguTweaks_cache["players_cleanup"] = now
+    return
+  end
+
+  if now - lastCleanup < PLAYER_CACHE_MAX_AGE then return end
+
+  for name, data in pairs(playerdb) do
+    if type(data) ~= "table" then
+      playerdb[name] = nil
+    elseif type(data.lastseen) == "number" then
+      if now - data.lastseen >= PLAYER_CACHE_MAX_AGE then
+        playerdb[name] = nil
+      end
+    else
+      -- Legacy string dates that survived a complete cleanup cycle belong to
+      -- players that were not seen during the last 180 days.
+      playerdb[name] = nil
+    end
+  end
+
+  ShaguTweaks_cache["players_cleanup"] = now
+end
 
 local module = ShaguTweaks:register({
   title = T["Social Colors"],
@@ -98,6 +149,7 @@ HookChatColors()
 
 module.enable = function(self)
   local playerdb = GetPlayerDB()
+  CleanupPlayerDB(playerdb)
 
   -- Defensive second call for chat frames created/replaced by another addon
   -- between file load and VARIABLES_LOADED. Existing hooks are never duplicated.
@@ -108,7 +160,7 @@ module.enable = function(self)
   socialmod:SetScript("OnEvent", function()
     local name = cmatch(arg1, _G.ERR_FRIEND_ONLINE_SS) or cmatch(arg1, _G.ERR_FRIEND_OFFLINE_S)
     if name and playerdb[name] and playerdb[name].cname then
-      playerdb[name].lastseen = date("%a %d-%b-%Y")
+      TouchPlayer(playerdb[name])
     end
   end)
 
@@ -195,7 +247,7 @@ module.enable = function(self)
 
           if ccolor then
             playerdb[name] = playerdb[name] or {}
-            playerdb[name].lastseen = date("%a %d-%b-%Y")
+            TouchPlayer(playerdb[name])
             playerdb[name].cname = cname
             playerdb[name].clevel = clevel
             playerdb[name].cclass = ccolor
@@ -214,7 +266,7 @@ module.enable = function(self)
         else
           if playerdb[name] and playerdb[name].cname and playerdb[name].clevel and playerdb[name].lastseen then
             caption:SetText(format(TEXT(FRIENDS_LIST_OFFLINE_TEMPLATE), playerdb[name].cname))
-            friendInfo:SetText(format(TEXT(friendinfo), playerdb[name].clevel, playerdb[name].lastseen, ""))
+            friendInfo:SetText(format(TEXT(friendinfo), playerdb[name].clevel, FormatLastSeen(playerdb[name].lastseen), ""))
           else
             caption:SetText(format(TEXT(FRIENDS_LIST_OFFLINE_TEMPLATE), name.."|r"))
             friendInfo:SetText(TEXT(UNKNOWN))
