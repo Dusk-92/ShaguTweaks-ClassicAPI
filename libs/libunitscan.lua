@@ -13,6 +13,7 @@ local libunitscan = CreateFrame("Frame", "ShaguTweaksUnitScan", UIParent)
 -- realm player database lazily whenever unit data is queried so every character
 -- on the same realm reuses the same class/name cache.
 local cacheMigrationDone = false
+local cacheMigrationFinalized = false
 local cachedCacheRoot
 local cachedRealm
 local cachedRealmDB
@@ -37,13 +38,13 @@ local function MergePlayerData(target, source)
   local sourceNewer = sourceSeen and
     (not targetSeen or sourceSeen > targetSeen)
 
-  -- Older per-character caches can lack numeric timestamps. In that case,
-  -- prefer the higher known level so switching characters cannot regress
-  -- Chat Levels until that player is seen again.
+  -- Character levels cannot normally go backwards. Prefer the highest known
+  -- numeric level even when a newer chat timestamp belongs to an older cached
+  -- level, so merging alts cannot regress Chat Levels.
   local targetLevel = tonumber(target.level)
   local sourceLevel = tonumber(source.level)
-  local sourceHasBetterLegacyLevel = not targetSeen and not sourceSeen
-    and sourceLevel and (not targetLevel or sourceLevel > targetLevel)
+  local sourceHasBetterLevel = sourceLevel
+    and (not targetLevel or sourceLevel > targetLevel)
 
   for key, value in pairs(source) do
     if key == "lastseen_ts" then
@@ -61,7 +62,7 @@ local function MergePlayerData(target, source)
         target.lastseen = value
       end
     elseif key == "level" or key == "clevel" then
-      if sourceNewer or sourceHasBetterLegacyLevel or target[key] == nil then
+      if sourceNewer or sourceHasBetterLevel or target[key] == nil then
         target[key] = value
       end
     elseif sourceNewer or target[key] == nil then
@@ -124,6 +125,11 @@ local function GetRealmPlayerCache()
 end
 
 local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
+  -- After PLAYER_ENTERING_WORLD all SavedVariables are settled. Skip legacy
+  -- probing entirely on the hot GetUnitData path; PLAYER_LOGOUT re-enables one
+  -- final pass so any third-party recreation is still merged before saving.
+  if cacheMigrationFinalized and cacheMigrationDone then return end
+
   local perCharacterPlayers = type(ShaguTweaks_cache) == "table"
     and type(ShaguTweaks_cache.players) == "table"
 
@@ -206,14 +212,6 @@ local function EnsurePlayerCache()
   end
 
   MigrateLegacyPlayerCaches(units.players, realmdb, realm)
-
-  -- Final defensive cleanup: the shared cache is authoritative from this point
-  -- on, so never leave a player table attached to the per-character cache.
-  if type(ShaguTweaks_cache) == "table" then
-    ShaguTweaks_cache.players = nil
-    ShaguTweaks_cache.players_cleanup = nil
-    ShaguTweaks_cache.social_global_migrated = nil
-  end
 
   return units.players, realmdb
 end
@@ -382,13 +380,16 @@ libunitscan:SetScript("OnEvent", function()
     -- SavedVariables are written after this event. Re-run the migration here so
     -- even a legacy addon path that recreated ShaguTweaks_cache.players during
     -- the session cannot persist a duplicate per-character player database.
+    cacheMigrationFinalized = false
     cacheMigrationDone = false
     EnsurePlayerCache()
 
   elseif event == "PLAYER_ENTERING_WORLD" then
     -- Ensure the saved database is already bound even if another module queried
-    -- it earlier while restoring UI state.
+    -- it earlier while restoring UI state. From here onward SavedVariables are
+    -- settled, so future cache reads can skip migration checks completely.
     EnsurePlayerCache()
+    cacheMigrationFinalized = true
 
     -- One cheap cleanup pass at login. Known classes are kept forever.
     PrunePassivePlayers()
