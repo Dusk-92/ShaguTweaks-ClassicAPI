@@ -169,8 +169,9 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
   -- Normally this is a one-time migration. Still check both legacy sources:
   -- the first global-cache test may become available after an earlier cache
   -- lookup, and must not be postponed until PLAYER_LOGOUT.
-  if cacheMigrationDone and not perCharacterPlayers and
-    not (oldGlobalPlayers and next(oldGlobalPlayers))
+  if cacheMigrationDone and normalizedRealm == realm
+    and not perCharacterPlayers
+    and not (oldGlobalPlayers and next(oldGlobalPlayers))
   then
     return
   end
