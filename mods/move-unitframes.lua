@@ -62,7 +62,7 @@ module.enable = function(self)
     { name = "PartyMemberFrame2", persist = true },
     { name = "PartyMemberFrame3", persist = true },
     { name = "PartyMemberFrame4", persist = true },
-    { name = "Minimap", moveParent = true, persist = true },
+    { name = "Minimap", moveParent = true, persist = true, clamp = true },
     { name = "BuffButton0", persist = true, manualGroup = "buffs", cursorDrag = true },
     { name = "BuffButton32", persist = true, manualGroup = "debuffs", cursorDrag = true },
     { name = "TempEnchant1", persist = true, manualGroup = "weapon", cursorDrag = true },
@@ -131,6 +131,10 @@ module.enable = function(self)
     end
     moveFrame:ClearAllPoints()
     moveFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pos[1], pos[2])
+
+    if target.name == "Minimap" and ShaguTweaks.ScheduleMinimapClamp then
+      ShaguTweaks.ScheduleMinimapClamp()
+    end
   end
 
   -- Aura buttons are layout-owned frames on some Vanilla/Turtle UI builds.
