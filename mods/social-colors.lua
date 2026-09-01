@@ -48,14 +48,15 @@ local function CleanupPlayerDB(playerdb, realmdb)
   for name, data in pairs(playerdb) do
     if type(data) ~= "table" then
       playerdb[name] = nil
-    elseif data.cname or data.clevel or data.cclass then
-      if type(data.lastseen) == "number" then
-        if now - data.lastseen >= PLAYER_CACHE_MAX_AGE then
-          playerdb[name] = nil
-        end
-      else
-        -- Old Social Colors entries still using the legacy string date were
-        -- not refreshed during a complete 180-day cleanup cycle.
+    else
+      -- The shared cache also contains libunitscan-only entries. Prefer the
+      -- numeric Social Colors timestamp, then the passive scanner timestamp.
+      -- Entries without either timestamp have survived a full grace period and
+      -- can safely expire just like the old per-character cache did.
+      local lastSeen = type(data.lastseen) == "number" and data.lastseen
+        or tonumber(data.lastseen_ts)
+
+      if not lastSeen or now - lastSeen >= PLAYER_CACHE_MAX_AGE then
         playerdb[name] = nil
       end
     end
