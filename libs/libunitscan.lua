@@ -9,33 +9,124 @@ local PASSIVE_CACHE_TTL = 90 * 24 * 60 * 60
 
 local libunitscan = CreateFrame("Frame", "ShaguTweaksUnitScan", UIParent)
 
--- Chat history can be restored before PLAYER_ENTERING_WORLD. Bind the saved
--- player database lazily whenever unit data is queried so Social Colors can use
--- classes learned before a /reload. Merge any transient entries collected before
--- SavedVariables became available instead of discarding them.
-local function EnsurePlayerCache()
-  ShaguTweaks_cache = ShaguTweaks_cache or {}
-  ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
+-- Chat history can be restored before PLAYER_ENTERING_WORLD. Bind the shared
+-- realm player database lazily whenever unit data is queried so every character
+-- on the same realm reuses the same class/name cache.
+local cacheMigrationDone = false
 
-  if units.players ~= ShaguTweaks_cache["players"] then
-    local transient = units.players
-    units.players = ShaguTweaks_cache["players"]
-
-    for name, data in pairs(transient) do
-      if not units.players[name] then
-        units.players[name] = data
-      elseif data then
-        for key, value in pairs(data) do
-          if units.players[name][key] == nil then
-            units.players[name][key] = value
-          end
+local function MergePlayerData(target, source)
+  for key, value in pairs(source) do
+    if key == "lastseen_ts" then
+      if type(value) == "number" and
+        (type(target.lastseen_ts) ~= "number" or value > target.lastseen_ts)
+      then
+        target.lastseen_ts = value
+      end
+    elseif key == "lastseen" then
+      if type(value) == "number" then
+        if type(target.lastseen) ~= "number" or value > target.lastseen then
+          target.lastseen = value
         end
+      elseif target.lastseen == nil then
+        target.lastseen = value
+      end
+    elseif target[key] == nil then
+      target[key] = value
+    end
+  end
+end
+
+local function MergePlayerTable(target, source)
+  if type(source) ~= "table" or source == target then return end
+
+  for name, data in pairs(source) do
+    if type(name) == "string" and type(data) == "table" then
+      if type(target[name]) ~= "table" then
+        target[name] = data
+      else
+        MergePlayerData(target[name], data)
       end
     end
   end
-
-  return units.players
 end
+
+local function GetRealmPlayerCache()
+  local root = _G.ShaguTweaks_player_cache
+  if type(root) ~= "table" then
+    root = {}
+    _G.ShaguTweaks_player_cache = root
+  end
+
+  local realm = GetRealmName and GetRealmName() or "Unknown"
+  if not realm or realm == "" then realm = "Unknown" end
+
+  if type(root[realm]) ~= "table" then
+    root[realm] = {}
+  end
+
+  local realmdb = root[realm]
+  if type(realmdb.players) ~= "table" then
+    realmdb.players = {}
+  end
+
+  return realmdb.players, realmdb, realm
+end
+
+local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
+  if cacheMigrationDone then return end
+
+  -- Merge the old per-character cache, then remove its player entries so they
+  -- are no longer written back to each character's SavedVariables file.
+  if type(ShaguTweaks_cache) == "table" then
+    MergePlayerTable(playerdb, ShaguTweaks_cache.players)
+
+    local oldCleanup = tonumber(ShaguTweaks_cache.players_cleanup)
+    if tonumber(realmdb.players_cleanup) == nil and oldCleanup then
+      realmdb.players_cleanup = oldCleanup
+    end
+
+    ShaguTweaks_cache.players = nil
+    ShaguTweaks_cache.players_cleanup = nil
+    ShaguTweaks_cache.social_global_migrated = nil
+  end
+
+  -- Migrate the first test branch's temporary global Social Colors cache too.
+  local oldGlobal = _G.ShaguTweaks_social_cache
+  if type(oldGlobal) == "table" then
+    local oldRealm = oldGlobal[realm]
+    if type(oldRealm) == "table" then
+      MergePlayerTable(playerdb, oldRealm.players)
+
+      local oldCleanup = tonumber(oldRealm.players_cleanup)
+      if tonumber(realmdb.players_cleanup) == nil and oldCleanup then
+        realmdb.players_cleanup = oldCleanup
+      end
+
+      oldGlobal[realm] = nil
+    end
+
+    if next(oldGlobal) == nil then
+      _G.ShaguTweaks_social_cache = nil
+    end
+  end
+
+  cacheMigrationDone = true
+end
+
+local function EnsurePlayerCache()
+  local shared, realmdb, realm = GetRealmPlayerCache()
+
+  if units.players ~= shared then
+    local transient = units.players
+    units.players = shared
+    MergePlayerTable(units.players, transient)
+  end
+
+  MigrateLegacyPlayerCaches(units.players, realmdb, realm)
+  return units.players, realmdb
+end
+
+ShaguTweaks.GetPlayerCache = EnsurePlayerCache
 
 local function EnrichPlayerFromClassicAPI(name)
   if not name or not API or not API.GetCachedPlayerInfoByName then return end
