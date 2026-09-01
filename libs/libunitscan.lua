@@ -62,9 +62,16 @@ local function MergePlayerData(target, source)
       elseif sourceNewer or target.lastseen == nil then
         target.lastseen = value
       end
-    elseif key == "level" or key == "clevel" then
-      if sourceNewer or sourceHasBetterLevel or target[key] == nil then
-        target[key] = value
+    elseif key == "level" then
+      -- Never regress a raw player level just because an older level happened
+      -- to carry a newer chat timestamp in another character's cache.
+      if sourceHasBetterLevel or target.level == nil then
+        target.level = value
+      end
+    elseif key == "clevel" then
+      -- Legacy presentation fallback only. Raw level wins whenever available.
+      if sourceNewer or target.clevel == nil then
+        target.clevel = value
       end
     elseif sourceNewer or target[key] == nil then
       target[key] = value
@@ -165,13 +172,19 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
   local oldRealm = type(oldGlobal) == "table" and oldGlobal[realm]
   local oldGlobalPlayers = type(oldRealm) == "table"
     and type(oldRealm.players) == "table" and oldRealm.players
+  local oldUnknownRealm = type(oldGlobal) == "table" and realm ~= "Unknown"
+    and oldGlobal["Unknown"]
+  local oldUnknownPlayers = type(oldUnknownRealm) == "table"
+    and type(oldUnknownRealm.players) == "table" and oldUnknownRealm.players
+  local hasOldGlobalPlayers = (oldGlobalPlayers and next(oldGlobalPlayers))
+    or (oldUnknownPlayers and next(oldUnknownPlayers))
 
   -- Normally this is a one-time migration. Still check both legacy sources:
   -- the first global-cache test may become available after an earlier cache
   -- lookup, and must not be postponed until PLAYER_LOGOUT.
   if cacheMigrationDone and normalizedRealm == realm
     and not perCharacterPlayers
-    and not (oldGlobalPlayers and next(oldGlobalPlayers))
+    and not hasOldGlobalPlayers
   then
     return
   end
@@ -209,6 +222,19 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
       end
 
       oldGlobal[realm] = nil
+    end
+
+    -- Very early revisions could create an "Unknown" realm bucket before
+    -- GetRealmName() was ready. If the real realm is now known, fold that
+    -- orphaned test data into it instead of leaving a stale account cache.
+    if realm ~= "Unknown" and type(oldUnknownRealm) == "table" then
+      local oldPlayers = oldUnknownRealm.players
+      if type(oldPlayers) == "table" then
+        if next(oldPlayers) then migratedLegacyPlayers = true end
+        MergePlayerTable(playerdb, oldPlayers)
+      end
+
+      oldGlobal["Unknown"] = nil
     end
 
     if next(oldGlobal) == nil then
