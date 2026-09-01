@@ -73,7 +73,13 @@ local function GetRealmPlayerCache()
 end
 
 local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
-  if cacheMigrationDone then return end
+  local perCharacterPlayers = type(ShaguTweaks_cache) == "table"
+    and type(ShaguTweaks_cache.players) == "table"
+
+  -- Normally this is a one-time migration. If another legacy code path happens
+  -- to recreate the per-character players table later, migrate it again instead
+  -- of letting duplicate data survive until the next session.
+  if cacheMigrationDone and not perCharacterPlayers then return end
 
   -- Merge the old per-character cache, then remove its player entries so they
   -- are no longer written back to each character's SavedVariables file.
@@ -123,6 +129,15 @@ local function EnsurePlayerCache()
   end
 
   MigrateLegacyPlayerCaches(units.players, realmdb, realm)
+
+  -- Final defensive cleanup: the shared cache is authoritative from this point
+  -- on, so never leave a player table attached to the per-character cache.
+  if type(ShaguTweaks_cache) == "table" then
+    ShaguTweaks_cache.players = nil
+    ShaguTweaks_cache.players_cleanup = nil
+    ShaguTweaks_cache.social_global_migrated = nil
+  end
+
   return units.players, realmdb
 end
 
@@ -270,6 +285,7 @@ local useNameplateUnitEvents = API and API.eventutils and _G.C_EventUtils
   and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
 
 libunitscan:RegisterEvent("PLAYER_ENTERING_WORLD")
+libunitscan:RegisterEvent("PLAYER_LOGOUT")
 libunitscan:RegisterEvent("FRIENDLIST_UPDATE")
 libunitscan:RegisterEvent("GUILD_ROSTER_UPDATE")
 libunitscan:RegisterEvent("RAID_ROSTER_UPDATE")
@@ -285,7 +301,14 @@ for chatEvent in pairs(passiveChatEvents) do
 end
 
 libunitscan:SetScript("OnEvent", function()
-  if event == "PLAYER_ENTERING_WORLD" then
+  if event == "PLAYER_LOGOUT" then
+    -- SavedVariables are written after this event. Re-run the migration here so
+    -- even a legacy addon path that recreated ShaguTweaks_cache.players during
+    -- the session cannot persist a duplicate per-character player database.
+    cacheMigrationDone = false
+    EnsurePlayerCache()
+
+  elseif event == "PLAYER_ENTERING_WORLD" then
     -- Ensure the saved database is already bound even if another module queried
     -- it earlier while restoring UI state.
     EnsurePlayerCache()
