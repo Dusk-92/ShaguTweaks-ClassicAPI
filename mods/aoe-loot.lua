@@ -20,17 +20,6 @@ module.enable = function(self)
     return GetLootMethod() == "master"
   end
 
-  local function IsAutoLootActive()
-    if not GetCVar then return false end
-
-    local enabled = tonumber(GetCVar("autoLootDefault")) == 1
-    if IsShiftKeyDown and IsShiftKeyDown() then
-      enabled = not enabled
-    end
-
-    return enabled
-  end
-
   local function CanStartAoELoot()
     if IsMasterLootActive() then return false end
     if not C_Loot or not C_Loot.LootAllCorpses then return false end
@@ -93,11 +82,10 @@ module.enable = function(self)
       releaseDeadline = GetTime() + 3
       frame:SetScript("OnUpdate", WaitForLootRelease)
 
-      -- Let native Auto Loot drain the first corpse. Without Auto Loot,
-      -- close the normal session so ClassicAPI can take over all corpses.
-      if not IsAutoLootActive() then
-        CloseLoot()
-      end
+      -- Close the normal session so ClassicAPI can take over. The temporary
+      -- waiter also handles clients whose native Auto Loot already completed
+      -- and fired LOOT_CLOSED before this module received LOOT_OPENED.
+      CloseLoot()
 
       return
     end
