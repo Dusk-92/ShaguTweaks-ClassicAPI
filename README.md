@@ -177,6 +177,8 @@ ClassicAPI compatibility fork maintained by **Dusk-92**.
 
 Special thanks to **Sandrea** for providing **AoELoot**, adapted here as the **AoE Loot** module.
 
+Special thanks to **Jesper_92** for reporting issues that helped improve the addon.
+
 Additional code and ideas from **pfUI** and **zUI**.
 
 Extended Movable Unit Frames support adapted from **TokensWorth/ShaguTweaks-mods**, originally released under MIT by **GryllsAddons**. See `THIRD_PARTY_NOTICES.md`.
