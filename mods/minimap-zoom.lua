@@ -46,12 +46,82 @@ local function EnsureMovedPosition(frame, key)
   EnsurePoint(frame, "TOPLEFT", UIParent, "BOTTOMLEFT", pos[1], pos[2])
 end
 
+-- Keep a moved/scaled minimap fully on screen without touching its saved
+-- Movable Unit Frames position. Bounds are compared in physical screen space
+-- because MinimapCluster can have a different effective scale than UIParent.
+local function ClampMinimapToScreen()
+  local frame = MinimapCluster
+  if not frame or not UIParent then return end
+
+  local left = frame:GetLeft()
+  local right = frame:GetRight()
+  local top = frame:GetTop()
+  local bottom = frame:GetBottom()
+  if not left or not right or not top or not bottom then return end
+
+  local frameScale = frame:GetEffectiveScale()
+  local uiScale = UIParent:GetEffectiveScale()
+  if not frameScale or frameScale <= 0 or not uiScale or uiScale <= 0 then return end
+
+  local uiLeft = (UIParent:GetLeft() or 0) * uiScale
+  local uiRight = (UIParent:GetRight() or UIParent:GetWidth()) * uiScale
+  local uiTop = (UIParent:GetTop() or UIParent:GetHeight()) * uiScale
+  local uiBottom = (UIParent:GetBottom() or 0) * uiScale
+
+  local frameLeft = left * frameScale
+  local frameRight = right * frameScale
+  local frameTop = top * frameScale
+  local frameBottom = bottom * frameScale
+
+  local dx, dy = 0, 0
+
+  if frameLeft < uiLeft then
+    dx = uiLeft - frameLeft
+  elseif frameRight > uiRight then
+    dx = uiRight - frameRight
+  end
+
+  if frameBottom < uiBottom then
+    dy = uiBottom - frameBottom
+  elseif frameTop > uiTop then
+    dy = uiTop - frameTop
+  end
+
+  if dx == 0 and dy == 0 then return end
+
+  -- Anchor from the measured top-left so only the overflowing amount is moved.
+  -- This changes the live position only; the saved mover coordinates stay intact.
+  local newLeft = (frameLeft + dx - uiLeft) / frameScale
+  local newTop = (frameTop + dy - uiBottom) / frameScale
+
+  frame:ClearAllPoints()
+  frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", newLeft, newTop)
+end
+
+-- Layout coordinates can lag one frame after SetScale()/SetPoint() on Vanilla.
+-- Coalesce clamp requests into a single deferred pass with no permanent OnUpdate.
+local minimapClampFrame = CreateFrame("Frame")
+minimapClampFrame:Hide()
+minimapClampFrame:SetScript("OnUpdate", function()
+  this:Hide()
+  ClampMinimapToScreen()
+end)
+
+ShaguTweaks.ScheduleMinimapClamp = function()
+  minimapClampFrame:Show()
+end
+
 module.enable = function(self)
   local scale = module.config["minimap.scale"]
   if scale < 1.0 then scale = 1.0 end
   if scale > 2.0 then scale = 2.0 end
 
+  if MinimapCluster.SetClampedToScreen then
+    MinimapCluster:SetClampedToScreen(true)
+  end
+
   MinimapCluster:SetScale(scale)
+  ShaguTweaks.ScheduleMinimapClamp()
 
   -- BuffFrame is anchored to UIParent TOPRIGHT/TOPRIGHT x=-205 y=-13 by vanilla.
   -- The C engine can restore these anchors after aura layout updates, so keep a
