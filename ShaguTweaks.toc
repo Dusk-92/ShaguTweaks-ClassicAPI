@@ -5,6 +5,7 @@
 ## Notes-ruRU: Коллекция настроек и улучшений стандартного пользовательского интерфейса.
 ## Version: GIT
 ## Dependencies: !!!ClassicAPI
+## SavedVariables: ShaguTweaks_social_cache
 ## SavedVariablesPerCharacter: ShaguTweaks_config, ShaguTweaks_cache
 
 # locales
