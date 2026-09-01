@@ -175,16 +175,21 @@ end
 HookChatColors()
 
 module.enable = function(self)
-  local playerdb, realmdb = GetPlayerCache()
-  CleanupPlayerDB(playerdb, realmdb)
-
   -- Defensive second call for chat frames created/replaced by another addon
   -- between file load and VARIABLES_LOADED. Existing hooks are never duplicated.
   HookChatColors()
 
   local socialmod = CreateFrame("Frame", "ShaguTweaksSocialMod", UIParent)
+  socialmod:RegisterEvent("PLAYER_ENTERING_WORLD")
   socialmod:RegisterEvent("CHAT_MSG_SYSTEM")
   socialmod:SetScript("OnEvent", function()
+    if event == "PLAYER_ENTERING_WORLD" then
+      local playerdb, realmdb = GetPlayerCache()
+      CleanupPlayerDB(playerdb, realmdb)
+      this:UnregisterEvent("PLAYER_ENTERING_WORLD")
+      return
+    end
+
     local currentdb = GetPlayerCache()
     local name = cmatch(arg1, _G.ERR_FRIEND_ONLINE_SS) or cmatch(arg1, _G.ERR_FRIEND_OFFLINE_S)
     if name and currentdb[name] then
