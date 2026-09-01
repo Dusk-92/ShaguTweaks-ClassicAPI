@@ -50,6 +50,19 @@ A verbatim copy of the upstream license document is preserved in
 does not relicense ShaguTweaks-ClassicAPI under the GPL and does not imply that
 ClassicAPI binaries or source are distributed as part of this addon.
 
+## AoELoot
+
+`mods/aoe-loot.lua` is adapted from the standalone AoELoot addon provided to
+the project by Sandrea:
+
+- Original addon title: `AoELoot`
+- Original metadata credit: Sandrea / ChatGPT
+- Adapted module: `mods/aoe-loot.lua`
+
+The supplied package did not include an upstream URL or a separate license
+file. This notice records the known provenance and preserves attribution; it
+does not infer additional licensing terms.
+
 ## SuperWoW
 
 SuperWoW is an optional external runtime dependency/fallback used by some

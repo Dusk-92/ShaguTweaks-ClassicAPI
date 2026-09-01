@@ -41,6 +41,7 @@ Settings: **Esc → Advanced Options**.
 ## 🔷 Mods using ClassicAPI directly
 
 - Actionbar Range Color
+- AoE Loot
 - Auto Dismount
 - Chat Tweaks
 - Equip Compare

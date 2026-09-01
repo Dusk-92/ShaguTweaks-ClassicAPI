@@ -4,7 +4,7 @@ local T = ShaguTweaks.T
 
 local module = ShaguTweaks:register({
   title = T["AoE Loot"],
-  description = T["Automatically loots all nearby corpses using ClassicAPI. Leaves Master Loot untouched."],
+  description = T["Automatically loots all nearby corpses using ClassicAPI without confirmation prompts. Leaves Master Loot untouched."],
   expansions = { ["vanilla"] = true },
   category = T["Loot"],
   enabled = nil,
@@ -43,7 +43,6 @@ module.enable = function(self)
   end
 
   local function QueueAoELoot()
-    pending = false
     releaseDeadline = 0
     frame:SetScript("OnUpdate", StartAoELoot)
   end
