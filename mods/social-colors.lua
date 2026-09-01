@@ -53,8 +53,11 @@ local function CleanupPlayerDB(playerdb, realmdb)
       -- numeric Social Colors timestamp, then the passive scanner timestamp.
       -- Entries without either timestamp have survived a full grace period and
       -- can safely expire just like the old per-character cache did.
-      local lastSeen = type(data.lastseen) == "number" and data.lastseen
-        or tonumber(data.lastseen_ts)
+      local lastSeen = type(data.lastseen) == "number" and data.lastseen or nil
+      local lastSeenTs = tonumber(data.lastseen_ts)
+      if lastSeenTs and (not lastSeen or lastSeenTs > lastSeen) then
+        lastSeen = lastSeenTs
+      end
 
       if not lastSeen or now - lastSeen >= PLAYER_CACHE_MAX_AGE then
         playerdb[name] = nil
@@ -158,9 +161,10 @@ module.enable = function(self)
   local socialmod = CreateFrame("Frame", "ShaguTweaksSocialMod", UIParent)
   socialmod:RegisterEvent("CHAT_MSG_SYSTEM")
   socialmod:SetScript("OnEvent", function()
+    local currentdb = GetPlayerCache()
     local name = cmatch(arg1, _G.ERR_FRIEND_ONLINE_SS) or cmatch(arg1, _G.ERR_FRIEND_OFFLINE_S)
-    if name and playerdb[name] and playerdb[name].cname then
-      TouchPlayer(playerdb[name])
+    if name and currentdb[name] and currentdb[name].cname then
+      TouchPlayer(currentdb[name])
     end
   end)
 
@@ -223,6 +227,7 @@ module.enable = function(self)
     hooksecurefunc("FriendsList_Update", function()
       if GetNumFriends() == 0 then return end
 
+      local playerdb = GetPlayerCache()
       local playerzone = GetRealZoneText()
       local off = FauxScrollFrame_GetOffset(FriendsFrameFriendsScrollFrame)
 
