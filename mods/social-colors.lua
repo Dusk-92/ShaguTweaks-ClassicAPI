@@ -3,6 +3,7 @@ local T = ShaguTweaks.T
 local L = ShaguTweaks.L
 local gfind = string.gmatch or string.gfind
 local GetUnitData = ShaguTweaks.GetUnitData
+local GetPlayerCache = ShaguTweaks.GetPlayerCache
 local hooksecurefunc = ShaguTweaks.hooksecurefunc
 local GetExpansion = ShaguTweaks.GetExpansion
 local cmatch = ShaguTweaks.cmatch
@@ -14,7 +15,9 @@ local function TouchPlayer(entry)
   if not entry then return end
 
   if time then
-    entry.lastseen = time()
+    local now = time()
+    entry.lastseen = now
+    entry.lastseen_ts = now
   else
     entry.lastseen = date("%a %d-%b-%Y")
   end
@@ -32,12 +35,11 @@ local function CleanupPlayerDB(playerdb, realmdb)
   if not time then return end
 
   local now = time()
-  local lastCleanup = tonumber(realmdb["players_cleanup"]) or 0
+  local lastCleanup = tonumber(realmdb.players_cleanup) or 0
 
-  -- Start the 180-day grace period without touching existing cache entries.
-  -- Players seen during that period are migrated to numeric timestamps.
+  -- Start the 180-day grace period without touching existing entries.
   if lastCleanup == 0 then
-    realmdb["players_cleanup"] = now
+    realmdb.players_cleanup = now
     return
   end
 
@@ -46,18 +48,20 @@ local function CleanupPlayerDB(playerdb, realmdb)
   for name, data in pairs(playerdb) do
     if type(data) ~= "table" then
       playerdb[name] = nil
-    elseif type(data.lastseen) == "number" then
-      if now - data.lastseen >= PLAYER_CACHE_MAX_AGE then
+    elseif data.cname or data.clevel or data.cclass then
+      if type(data.lastseen) == "number" then
+        if now - data.lastseen >= PLAYER_CACHE_MAX_AGE then
+          playerdb[name] = nil
+        end
+      else
+        -- Old Social Colors entries still using the legacy string date were
+        -- not refreshed during a complete 180-day cleanup cycle.
         playerdb[name] = nil
       end
-    else
-      -- Legacy string dates that survived a complete cleanup cycle belong to
-      -- players that were not seen during the last 180 days.
-      playerdb[name] = nil
     end
   end
 
-  realmdb["players_cleanup"] = now
+  realmdb.players_cleanup = now
 end
 
 local module = ShaguTweaks:register({
@@ -68,74 +72,6 @@ local module = ShaguTweaks:register({
   enabled = true,
 })
 
-local function GetPlayerDB()
-  local globalCache = _G.ShaguTweaks_social_cache
-  if type(globalCache) ~= "table" then
-    globalCache = {}
-    _G.ShaguTweaks_social_cache = globalCache
-  end
-
-  local realm = "Unknown"
-  if type(GetRealmName) == "function" then
-    realm = GetRealmName() or "Unknown"
-    if realm == "" then realm = "Unknown" end
-  end
-
-  if type(globalCache[realm]) ~= "table" then
-    globalCache[realm] = {}
-  end
-
-  local realmdb = globalCache[realm]
-  if type(realmdb["players"]) ~= "table" then
-    realmdb["players"] = {}
-  end
-
-  return realmdb["players"], realmdb
-end
-
-local function MigrateLegacyPlayerDB(playerdb, realmdb)
-  if type(ShaguTweaks_cache) ~= "table" then return end
-
-  local legacy = ShaguTweaks_cache["players"]
-  local legacyCleanup = tonumber(ShaguTweaks_cache["players_cleanup"])
-
-  -- Move this character's old Social Colors cache into the shared realm cache.
-  -- Reuse the existing entry tables instead of cloning them, then remove the
-  -- per-character references so future saves no longer duplicate player data.
-  if type(legacy) == "table" then
-    for name, source in pairs(legacy) do
-      if type(name) == "string" and type(source) == "table" then
-        local target = playerdb[name]
-
-        if type(target) ~= "table" then
-          playerdb[name] = source
-        else
-          local sourceSeen = source.lastseen
-          local targetSeen = target.lastseen
-          local useSource = type(sourceSeen) == "number"
-            and (type(targetSeen) ~= "number" or sourceSeen > targetSeen)
-
-          if useSource then
-            playerdb[name] = source
-          else
-            if target.cname == nil then target.cname = source.cname end
-            if target.clevel == nil then target.clevel = source.clevel end
-            if target.cclass == nil then target.cclass = source.cclass end
-            if target.lastseen == nil then target.lastseen = source.lastseen end
-          end
-        end
-      end
-    end
-  end
-
-  if tonumber(realmdb["players_cleanup"]) == nil and legacyCleanup then
-    realmdb["players_cleanup"] = legacyCleanup
-  end
-
-  ShaguTweaks_cache["players"] = nil
-  ShaguTweaks_cache["players_cleanup"] = nil
-  ShaguTweaks_cache["social_global_migrated"] = nil
-end
 
 -- Chat Tweaks restores persisted chat during module enable. Module enable order
 -- is intentionally not guaranteed, so install the lightweight AddMessage hook
@@ -211,8 +147,7 @@ end
 HookChatColors()
 
 module.enable = function(self)
-  local playerdb, realmdb = GetPlayerDB()
-  MigrateLegacyPlayerDB(playerdb, realmdb)
+  local playerdb, realmdb = GetPlayerCache()
   CleanupPlayerDB(playerdb, realmdb)
 
   -- Defensive second call for chat frames created/replaced by another addon
@@ -312,6 +247,7 @@ module.enable = function(self)
           if ccolor then
             playerdb[name] = playerdb[name] or {}
             TouchPlayer(playerdb[name])
+            playerdb[name].class = classToken or playerdb[name].class
             playerdb[name].cname = cname
             playerdb[name].clevel = clevel
             playerdb[name].cclass = ccolor
