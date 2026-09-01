@@ -182,9 +182,16 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
   -- are no longer written back to each character's SavedVariables file.
   if type(ShaguTweaks_cache) == "table" then
     local legacyPlayers = ShaguTweaks_cache.players
-    if type(legacyPlayers) == "table" then
-      if next(legacyPlayers) then migratedLegacyPlayers = true end
+    if type(legacyPlayers) == "table" and next(legacyPlayers) then
+      -- Grant the migration grace period only once per character. This avoids
+      -- an external legacy module recreating players on every session and
+      -- postponing the shared 180-day cleanup forever.
+      if not ShaguTweaks_cache.player_cache_migrated then
+        migratedLegacyPlayers = true
+      end
+
       MergePlayerTable(playerdb, legacyPlayers)
+      ShaguTweaks_cache.player_cache_migrated = 1
     end
 
     ShaguTweaks_cache.players = nil
@@ -242,7 +249,8 @@ local function EnsurePlayerCache()
     -- that session-local duplicate so it cannot linger in SavedVariables.
     if previousRealm == "Unknown" and realm ~= "Unknown"
       and previousRoot == _G.ShaguTweaks_player_cache
-      and previousRoot["Unknown"] == transient
+      and type(previousRoot["Unknown"]) == "table"
+      and previousRoot["Unknown"].players == transient
     then
       previousRoot["Unknown"] = nil
     end
