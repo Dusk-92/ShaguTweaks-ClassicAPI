@@ -69,75 +69,58 @@ local module = ShaguTweaks:register({
 })
 
 local function GetPlayerDB()
-  ShaguTweaks_social_cache = ShaguTweaks_social_cache or {}
+  local globalCache = _G.ShaguTweaks_social_cache
+  if type(globalCache) ~= "table" then
+    globalCache = {}
+    _G.ShaguTweaks_social_cache = globalCache
+  end
 
-  local realm = GetRealmName and GetRealmName() or "Unknown"
-  if not realm or realm == "" then realm = "Unknown" end
+  local realm = "Unknown"
+  if type(GetRealmName) == "function" then
+    realm = GetRealmName() or "Unknown"
+    if realm == "" then realm = "Unknown" end
+  end
 
-  ShaguTweaks_social_cache[realm] = ShaguTweaks_social_cache[realm] or {}
-  local realmdb = ShaguTweaks_social_cache[realm]
-  realmdb["players"] = realmdb["players"] or {}
+  if type(globalCache[realm]) ~= "table" then
+    globalCache[realm] = {}
+  end
+
+  local realmdb = globalCache[realm]
+  if type(realmdb["players"]) ~= "table" then
+    realmdb["players"] = {}
+  end
 
   return realmdb["players"], realmdb
 end
 
-local function CopyPlayerData(target, source)
-  target.cname = source.cname
-  target.clevel = source.clevel
-  target.lastseen = source.lastseen
-
-  if type(source.cclass) == "table" then
-    target.cclass = {
-      r = source.cclass.r,
-      g = source.cclass.g,
-      b = source.cclass.b,
-      a = source.cclass.a,
-    }
-  else
-    target.cclass = source.cclass
-  end
-end
-
-local function MigrateLegacyPlayerDB(playerdb)
-  ShaguTweaks_cache = ShaguTweaks_cache or {}
-
-  -- This marker is per-character, so each character contributes its old cache
-  -- exactly once to the shared realm database.
-  if ShaguTweaks_cache["social_global_migrated"] == 1 then return end
+local function MigrateLegacyPlayerDB(playerdb, realmdb)
+  if type(ShaguTweaks_cache) ~= "table" then return end
 
   local legacy = ShaguTweaks_cache["players"]
+  local legacyCleanup = tonumber(ShaguTweaks_cache["players_cleanup"])
+
+  -- Move this character's old Social Colors cache into the shared realm cache.
+  -- Reuse the existing entry tables instead of cloning them, then remove the
+  -- per-character references so future saves no longer duplicate player data.
   if type(legacy) == "table" then
     for name, source in pairs(legacy) do
-      if type(source) == "table" then
+      if type(name) == "string" and type(source) == "table" then
         local target = playerdb[name]
 
-        if not target then
-          target = {}
-          playerdb[name] = target
-          CopyPlayerData(target, source)
+        if type(target) ~= "table" then
+          playerdb[name] = source
         else
           local sourceSeen = source.lastseen
           local targetSeen = target.lastseen
-          local sourceIsNewer = type(sourceSeen) == "number"
+          local useSource = type(sourceSeen) == "number"
             and (type(targetSeen) ~= "number" or sourceSeen > targetSeen)
 
-          if sourceIsNewer then
-            CopyPlayerData(target, source)
+          if useSource then
+            playerdb[name] = source
           else
             if target.cname == nil then target.cname = source.cname end
             if target.clevel == nil then target.clevel = source.clevel end
-            if target.cclass == nil then
-              if type(source.cclass) == "table" then
-                target.cclass = {
-                  r = source.cclass.r,
-                  g = source.cclass.g,
-                  b = source.cclass.b,
-                  a = source.cclass.a,
-                }
-              else
-                target.cclass = source.cclass
-              end
-            end
+            if target.cclass == nil then target.cclass = source.cclass end
             if target.lastseen == nil then target.lastseen = source.lastseen end
           end
         end
@@ -145,9 +128,13 @@ local function MigrateLegacyPlayerDB(playerdb)
     end
   end
 
-  -- Keep the old per-character table intact during the test phase so rolling
-  -- back the branch does not discard any previously stored Social Colors data.
-  ShaguTweaks_cache["social_global_migrated"] = 1
+  if tonumber(realmdb["players_cleanup"]) == nil and legacyCleanup then
+    realmdb["players_cleanup"] = legacyCleanup
+  end
+
+  ShaguTweaks_cache["players"] = nil
+  ShaguTweaks_cache["players_cleanup"] = nil
+  ShaguTweaks_cache["social_global_migrated"] = nil
 end
 
 -- Chat Tweaks restores persisted chat during module enable. Module enable order
@@ -225,7 +212,7 @@ HookChatColors()
 
 module.enable = function(self)
   local playerdb, realmdb = GetPlayerDB()
-  MigrateLegacyPlayerDB(playerdb)
+  MigrateLegacyPlayerDB(playerdb, realmdb)
   CleanupPlayerDB(playerdb, realmdb)
 
   -- Defensive second call for chat frames created/replaced by another addon
