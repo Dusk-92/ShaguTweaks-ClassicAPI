@@ -13,8 +13,31 @@ local libunitscan = CreateFrame("Frame", "ShaguTweaksUnitScan", UIParent)
 -- realm player database lazily whenever unit data is queried so every character
 -- on the same realm reuses the same class/name cache.
 local cacheMigrationDone = false
+local cachedCacheRoot
+local cachedRealm
+local cachedRealmDB
+local cachedPlayers
+
+local function GetPlayerTimestamp(data)
+  if type(data) ~= "table" then return end
+  if type(data.lastseen) == "number" then return data.lastseen end
+  if type(data.lastseen_ts) == "number" then return data.lastseen_ts end
+end
 
 local function MergePlayerData(target, source)
+  local targetSeen = GetPlayerTimestamp(target)
+  local sourceSeen = GetPlayerTimestamp(source)
+  local sourceNewer = sourceSeen and
+    (not targetSeen or sourceSeen > targetSeen)
+
+  -- Older per-character caches can lack numeric timestamps. In that case,
+  -- prefer the higher known level so switching characters cannot regress
+  -- Chat Levels until that player is seen again.
+  local targetLevel = tonumber(target.level)
+  local sourceLevel = tonumber(source.level)
+  local sourceHasBetterLegacyLevel = not targetSeen and not sourceSeen
+    and sourceLevel and (not targetLevel or sourceLevel > targetLevel)
+
   for key, value in pairs(source) do
     if key == "lastseen_ts" then
       if type(value) == "number" and
@@ -27,10 +50,14 @@ local function MergePlayerData(target, source)
         if type(target.lastseen) ~= "number" or value > target.lastseen then
           target.lastseen = value
         end
-      elseif target.lastseen == nil then
+      elseif sourceNewer or target.lastseen == nil then
         target.lastseen = value
       end
-    elseif target[key] == nil then
+    elseif key == "level" or key == "clevel" then
+      if sourceNewer or sourceHasBetterLegacyLevel or target[key] == nil then
+        target[key] = value
+      end
+    elseif sourceNewer or target[key] == nil then
       target[key] = value
     end
   end
@@ -57,6 +84,18 @@ local function GetRealmPlayerCache()
     _G.ShaguTweaks_player_cache = root
   end
 
+  -- Once the real realm is known, the backing table cannot change during the
+  -- character session. Keep the hot GetUnitData path as cheap as it was before
+  -- the account-wide migration.
+  if cachedCacheRoot == root and cachedRealm and cachedRealm ~= "Unknown"
+    and cachedRealmDB == root[cachedRealm]
+    and type(cachedRealmDB) == "table"
+    and cachedRealmDB.players == cachedPlayers
+    and type(cachedPlayers) == "table"
+  then
+    return cachedPlayers, cachedRealmDB, cachedRealm
+  end
+
   local realm = GetRealmName and GetRealmName() or "Unknown"
   if not realm or realm == "" then realm = "Unknown" end
 
@@ -69,17 +108,31 @@ local function GetRealmPlayerCache()
     realmdb.players = {}
   end
 
-  return realmdb.players, realmdb, realm
+  cachedCacheRoot = root
+  cachedRealm = realm
+  cachedRealmDB = realmdb
+  cachedPlayers = realmdb.players
+
+  return cachedPlayers, cachedRealmDB, cachedRealm
 end
 
 local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
   local perCharacterPlayers = type(ShaguTweaks_cache) == "table"
     and type(ShaguTweaks_cache.players) == "table"
 
-  -- Normally this is a one-time migration. If another legacy code path happens
-  -- to recreate the per-character players table later, migrate it again instead
-  -- of letting duplicate data survive until the next session.
-  if cacheMigrationDone and not perCharacterPlayers then return end
+  local oldGlobal = _G.ShaguTweaks_social_cache
+  local oldRealm = type(oldGlobal) == "table" and oldGlobal[realm]
+  local oldGlobalPlayers = type(oldRealm) == "table"
+    and type(oldRealm.players) == "table" and oldRealm.players
+
+  -- Normally this is a one-time migration. Still check both legacy sources:
+  -- the first global-cache test may become available after an earlier cache
+  -- lookup, and must not be postponed until PLAYER_LOGOUT.
+  if cacheMigrationDone and not perCharacterPlayers and
+    not (oldGlobalPlayers and next(oldGlobalPlayers))
+  then
+    return
+  end
 
   local migratedLegacyPlayers = false
 
@@ -98,9 +151,7 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
   end
 
   -- Migrate the first test branch's temporary global Social Colors cache too.
-  local oldGlobal = _G.ShaguTweaks_social_cache
   if type(oldGlobal) == "table" then
-    local oldRealm = oldGlobal[realm]
     if type(oldRealm) == "table" then
       local oldPlayers = oldRealm.players
       if type(oldPlayers) == "table" then
