@@ -81,14 +81,15 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
   -- of letting duplicate data survive until the next session.
   if cacheMigrationDone and not perCharacterPlayers then return end
 
+  local migratedLegacyPlayers = false
+
   -- Merge the old per-character cache, then remove its player entries so they
   -- are no longer written back to each character's SavedVariables file.
   if type(ShaguTweaks_cache) == "table" then
-    MergePlayerTable(playerdb, ShaguTweaks_cache.players)
-
-    local oldCleanup = tonumber(ShaguTweaks_cache.players_cleanup)
-    if tonumber(realmdb.players_cleanup) == nil and oldCleanup then
-      realmdb.players_cleanup = oldCleanup
+    local legacyPlayers = ShaguTweaks_cache.players
+    if type(legacyPlayers) == "table" then
+      if next(legacyPlayers) then migratedLegacyPlayers = true end
+      MergePlayerTable(playerdb, legacyPlayers)
     end
 
     ShaguTweaks_cache.players = nil
@@ -101,11 +102,10 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
   if type(oldGlobal) == "table" then
     local oldRealm = oldGlobal[realm]
     if type(oldRealm) == "table" then
-      MergePlayerTable(playerdb, oldRealm.players)
-
-      local oldCleanup = tonumber(oldRealm.players_cleanup)
-      if tonumber(realmdb.players_cleanup) == nil and oldCleanup then
-        realmdb.players_cleanup = oldCleanup
+      local oldPlayers = oldRealm.players
+      if type(oldPlayers) == "table" then
+        if next(oldPlayers) then migratedLegacyPlayers = true end
+        MergePlayerTable(playerdb, oldPlayers)
       end
 
       oldGlobal[realm] = nil
@@ -114,6 +114,13 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
     if next(oldGlobal) == nil then
       _G.ShaguTweaks_social_cache = nil
     end
+  end
+
+  -- Any character contributing an old cache gets a fresh 180-day grace period.
+  -- This prevents a long-unused alt from importing data and having it purged
+  -- immediately because of an older cleanup timestamp from another character.
+  if migratedLegacyPlayers and time then
+    realmdb.players_cleanup = time()
   end
 
   cacheMigrationDone = true
