@@ -3,6 +3,7 @@ local T = ShaguTweaks.T
 local gfind = string.gmatch or string.gfind
 local rgbhex = ShaguTweaks.rgbhex
 local strsplit = ShaguTweaks.strsplit
+local GetPlayerCache = ShaguTweaks.GetPlayerCache
 
 local module = ShaguTweaks:register({
     title = T["Chat Levels"],
@@ -19,7 +20,7 @@ module.enable = function(self)
     if this.loaded then return end
     this.loaded = true
 
-    local playerdb = ShaguTweaks_cache and ShaguTweaks_cache["players"]
+    local playerdb = GetPlayerCache()
 
     for i=1, NUM_CHAT_WINDOWS do
       local frame = _G["ChatFrame"..i]
