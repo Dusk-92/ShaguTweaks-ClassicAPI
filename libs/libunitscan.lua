@@ -89,6 +89,13 @@ local function NormalizePlayerData(data)
   end
 end
 
+local function NormalizePlayerTable(playerdb)
+  if type(playerdb) ~= "table" then return end
+  for _, data in pairs(playerdb) do
+    NormalizePlayerData(data)
+  end
+end
+
 local function MergePlayerTable(target, source)
   if type(source) ~= "table" or source == target then return end
 
@@ -206,6 +213,10 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
   if migratedLegacyPlayers and time then
     realmdb.players_cleanup = time()
   end
+
+  -- Also clean presentation fields left by earlier revisions of this test
+  -- branch that already wrote directly into ShaguTweaks_player_cache.
+  NormalizePlayerTable(playerdb)
 
   cacheMigrationDone = true
 end
