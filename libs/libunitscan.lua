@@ -18,6 +18,7 @@ local cachedCacheRoot
 local cachedRealm
 local cachedRealmDB
 local cachedPlayers
+local normalizedRealm
 
 local function GetPlayerTimestamp(data)
   if type(data) ~= "table" then return end
@@ -215,8 +216,12 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
   end
 
   -- Also clean presentation fields left by earlier revisions of this test
-  -- branch that already wrote directly into ShaguTweaks_player_cache.
-  NormalizePlayerTable(playerdb)
+  -- branch that already wrote directly into ShaguTweaks_player_cache. Do this
+  -- once per resolved realm, not again during every logout.
+  if normalizedRealm ~= realm then
+    NormalizePlayerTable(playerdb)
+    normalizedRealm = realm
+  end
 
   cacheMigrationDone = true
 end
