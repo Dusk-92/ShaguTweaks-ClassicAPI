@@ -28,16 +28,16 @@ local function FormatLastSeen(lastseen)
   return lastseen
 end
 
-local function CleanupPlayerDB(playerdb)
+local function CleanupPlayerDB(playerdb, realmdb)
   if not time then return end
 
   local now = time()
-  local lastCleanup = tonumber(ShaguTweaks_cache["players_cleanup"]) or 0
+  local lastCleanup = tonumber(realmdb["players_cleanup"]) or 0
 
   -- Start the 180-day grace period without touching existing cache entries.
   -- Players seen during that period are migrated to numeric timestamps.
   if lastCleanup == 0 then
-    ShaguTweaks_cache["players_cleanup"] = now
+    realmdb["players_cleanup"] = now
     return
   end
 
@@ -57,7 +57,7 @@ local function CleanupPlayerDB(playerdb)
     end
   end
 
-  ShaguTweaks_cache["players_cleanup"] = now
+  realmdb["players_cleanup"] = now
 end
 
 local module = ShaguTweaks:register({
@@ -69,9 +69,85 @@ local module = ShaguTweaks:register({
 })
 
 local function GetPlayerDB()
+  ShaguTweaks_social_cache = ShaguTweaks_social_cache or {}
+
+  local realm = GetRealmName and GetRealmName() or "Unknown"
+  if not realm or realm == "" then realm = "Unknown" end
+
+  ShaguTweaks_social_cache[realm] = ShaguTweaks_social_cache[realm] or {}
+  local realmdb = ShaguTweaks_social_cache[realm]
+  realmdb["players"] = realmdb["players"] or {}
+
+  return realmdb["players"], realmdb
+end
+
+local function CopyPlayerData(target, source)
+  target.cname = source.cname
+  target.clevel = source.clevel
+  target.lastseen = source.lastseen
+
+  if type(source.cclass) == "table" then
+    target.cclass = {
+      r = source.cclass.r,
+      g = source.cclass.g,
+      b = source.cclass.b,
+      a = source.cclass.a,
+    }
+  else
+    target.cclass = source.cclass
+  end
+end
+
+local function MigrateLegacyPlayerDB(playerdb)
   ShaguTweaks_cache = ShaguTweaks_cache or {}
-  ShaguTweaks_cache["players"] = ShaguTweaks_cache["players"] or {}
-  return ShaguTweaks_cache["players"]
+
+  -- This marker is per-character, so each character contributes its old cache
+  -- exactly once to the shared realm database.
+  if ShaguTweaks_cache["social_global_migrated"] == 1 then return end
+
+  local legacy = ShaguTweaks_cache["players"]
+  if type(legacy) == "table" then
+    for name, source in pairs(legacy) do
+      if type(source) == "table" then
+        local target = playerdb[name]
+
+        if not target then
+          target = {}
+          playerdb[name] = target
+          CopyPlayerData(target, source)
+        else
+          local sourceSeen = source.lastseen
+          local targetSeen = target.lastseen
+          local sourceIsNewer = type(sourceSeen) == "number"
+            and (type(targetSeen) ~= "number" or sourceSeen > targetSeen)
+
+          if sourceIsNewer then
+            CopyPlayerData(target, source)
+          else
+            if target.cname == nil then target.cname = source.cname end
+            if target.clevel == nil then target.clevel = source.clevel end
+            if target.cclass == nil then
+              if type(source.cclass) == "table" then
+                target.cclass = {
+                  r = source.cclass.r,
+                  g = source.cclass.g,
+                  b = source.cclass.b,
+                  a = source.cclass.a,
+                }
+              else
+                target.cclass = source.cclass
+              end
+            end
+            if target.lastseen == nil then target.lastseen = source.lastseen end
+          end
+        end
+      end
+    end
+  end
+
+  -- Keep the old per-character table intact during the test phase so rolling
+  -- back the branch does not discard any previously stored Social Colors data.
+  ShaguTweaks_cache["social_global_migrated"] = 1
 end
 
 -- Chat Tweaks restores persisted chat during module enable. Module enable order
@@ -148,8 +224,9 @@ end
 HookChatColors()
 
 module.enable = function(self)
-  local playerdb = GetPlayerDB()
-  CleanupPlayerDB(playerdb)
+  local playerdb, realmdb = GetPlayerDB()
+  MigrateLegacyPlayerDB(playerdb)
+  CleanupPlayerDB(playerdb, realmdb)
 
   -- Defensive second call for chat frames created/replaced by another addon
   -- between file load and VARIABLES_LOADED. Existing hooks are never duplicated.
