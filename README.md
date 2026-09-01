@@ -124,6 +124,7 @@ Other modules can also benefit indirectly from ClassicAPI through shared ShaguTw
 
 ### Loot
 
+- AoE Loot
 - Improved Roll Frames
 - Loot Cursor
 
@@ -173,6 +174,8 @@ Original addon and modules by **Shagu**.
 Additional maintenance and Turtle WoW work by **paokkerkir**.
 
 ClassicAPI compatibility fork maintained by **Dusk-92**.
+
+Special thanks to **Sandrea** for providing **AoELoot**, adapted here as the **AoE Loot** module.
 
 Additional code and ideas from **pfUI** and **zUI**.
 

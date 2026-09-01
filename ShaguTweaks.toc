@@ -91,6 +91,7 @@ mods\turtle-wow.lua
 mods\superwow.lua
 mods\reduced-actionbar.lua
 mods\no-toggle.lua
+mods\aoe-loot.lua
 mods\loot-cursor.lua
 mods\improved-roll-frames.lua
 mods\improved-castbar.lua
