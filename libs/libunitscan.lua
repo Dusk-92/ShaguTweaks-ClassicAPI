@@ -20,8 +20,15 @@ local cachedPlayers
 
 local function GetPlayerTimestamp(data)
   if type(data) ~= "table" then return end
-  if type(data.lastseen) == "number" then return data.lastseen end
-  if type(data.lastseen_ts) == "number" then return data.lastseen_ts end
+
+  local seen = type(data.lastseen) == "number" and data.lastseen or nil
+  local seenTs = type(data.lastseen_ts) == "number" and data.lastseen_ts or nil
+
+  if seen and seenTs then
+    return seen > seenTs and seen or seenTs
+  end
+
+  return seen or seenTs
 end
 
 local function MergePlayerData(target, source)
@@ -178,12 +185,24 @@ local function MigrateLegacyPlayerCaches(playerdb, realmdb, realm)
 end
 
 local function EnsurePlayerCache()
+  local previousRealm = cachedRealm
+  local previousRoot = cachedCacheRoot
   local shared, realmdb, realm = GetRealmPlayerCache()
 
   if units.players ~= shared then
     local transient = units.players
     units.players = shared
     MergePlayerTable(units.players, transient)
+
+    -- If the cache was touched before the realm name became available, its
+    -- temporary Unknown bucket has just been merged into the real realm. Drop
+    -- that session-local duplicate so it cannot linger in SavedVariables.
+    if previousRealm == "Unknown" and realm ~= "Unknown"
+      and previousRoot == _G.ShaguTweaks_player_cache
+      and previousRoot["Unknown"] == transient
+    then
+      previousRoot["Unknown"] = nil
+    end
   end
 
   MigrateLegacyPlayerCaches(units.players, realmdb, realm)
