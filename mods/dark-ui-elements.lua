@@ -314,15 +314,61 @@ module.enable = function(self)
     DarkenFrame(_G["GameTooltipStatusBarBackdrop"])
   end)
 
-  -- BlizzNameplatesPlus v1.0.8 already re-applies ShaguTweaks dark mode
-  -- through its own nameplate library. In that exact known-compatible version,
-  -- do not register a second ShaguTweaks nameplate scanner callback.
-  local bnpOwnsDarkNameplates = BNP
-    and BNP.version == "1.0.8"
+  -- Prefer BlizzNameplatesPlus' own nameplate provider whenever available.
+  -- This is capability-based instead of version-based, so BNP updates keep
+  -- working as long as its public libnameplate callback API remains available.
+  local bnpNameplates = BNP
     and BNP.libnameplate
-    and BNP.shaguCompat
+    and BNP.libnameplate.OnInit
+    and BNP.libnameplate.OnShow
 
-  if not bnpOwnsDarkNameplates then
+  if bnpNameplates then
+    local pending = {}
+    local updater = CreateFrame("Frame")
+
+    local function StopUpdaterIfIdle()
+      if not next(pending) then
+        updater:SetScript("OnUpdate", nil)
+      end
+    end
+
+    local function ReapplyBNPDarkMode(plate)
+      plate = plate or this
+      if not plate or not plate:IsShown() then return end
+      if plate.darkened then return end
+
+      plate.darkened = true
+      DarkenFrame(plate)
+
+      -- Blizzard can restore some nameplate textures immediately after OnShow.
+      -- Queue one delayed pass, then stop completely. If BNP's own Shagu
+      -- compatibility already darkened the plate first, the marker above makes
+      -- this path a no-op and avoids duplicate work.
+      pending[plate] = GetTime() + 0.08
+      if not updater:GetScript("OnUpdate") then
+        updater:SetScript("OnUpdate", function()
+          local now = GetTime()
+          local current, due
+          for current, due in pairs(pending) do
+            if now >= due then
+              pending[current] = nil
+              if current and current:IsShown() then
+                current.darkened = nil
+                DarkenFrame(current)
+                current.darkened = true
+              end
+            end
+          end
+          StopUpdaterIfIdle()
+        end)
+      end
+    end
+
+    table.insert(BNP.libnameplate.OnInit, ReapplyBNPDarkMode)
+    table.insert(BNP.libnameplate.OnShow, ReapplyBNPDarkMode)
+  else
+    -- Plain ShaguTweaks / no compatible BNP provider: preserve the original
+    -- libnameplate behavior and let the lazy library activate automatically.
     table.insert(ShaguTweaks.libnameplate.OnUpdate, function()
       if not this.darkened then
         this.darkened = true
