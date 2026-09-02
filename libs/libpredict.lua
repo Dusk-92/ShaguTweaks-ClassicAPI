@@ -26,9 +26,7 @@ do -- Prayer of Healing
 end
 
 local libpredict = CreateFrame("Frame")
-libpredict:RegisterEvent("UNIT_HEALTH")
-libpredict:RegisterEvent("CHAT_MSG_ADDON")
-libpredict:RegisterEvent("PLAYER_TARGET_CHANGED")
+libpredict.enabled = false
 libpredict:SetScript("OnEvent", function()
   if event == "CHAT_MSG_ADDON" and (arg1 == "HealComm" or arg1 == "CTRA") then
     this:ParseChatMessage(arg4, arg2, arg1)
@@ -256,9 +254,6 @@ local realm = GetRealmName()
 local player = UnitName("player")
 local cache, gear_string = {}, ""
 local resetcache = CreateFrame("Frame")
-resetcache:RegisterEvent("PLAYER_ENTERING_WORLD")
-resetcache:RegisterEvent("SKILL_LINES_CHANGED")
-resetcache:RegisterEvent("UNIT_INVENTORY_CHANGED")
 resetcache:SetScript("OnEvent", function()
   if event == "PLAYER_ENTERING_WORLD" then
     -- load and initialize previous caches of spell amounts
@@ -314,27 +309,30 @@ local function UpdateCache(spell, heal, crit)
   end
 end
 
--- Gather Data by User Actions
-hooksecurefunc("CastSpell", function(id, bookType)
+-- Gather Data by User Actions. Hooks are installed lazily by libpredict:Enable()
+-- so disabling healing predictions leaves no spell hook on the hot path.
+local scanner = libtipscan:GetScanner("prediction")
+local hooksInstalled
+
+local function TrackCastSpell(id, bookType)
   if not libpredict.sender.enabled then return end
   local effect, rank = libspell.GetSpellInfo(id, bookType)
   if not effect then return end
   spell_queue[1] = effect
   spell_queue[2] = effect.. ( rank or "" )
   spell_queue[3] = UnitName("target") and UnitCanAssist("player", "target") and UnitName("target") or UnitName("player")
-end)
+end
 
-hooksecurefunc("CastSpellByName", function(effect, target)
+local function TrackCastSpellByName(effect, target)
   if not libpredict.sender.enabled then return end
   local effect, rank = libspell.GetSpellInfo(effect)
   if not effect then return end
   spell_queue[1] = effect
   spell_queue[2] = effect.. ( rank or "" )
   spell_queue[3] = UnitName("target") and UnitCanAssist("player", "target") and UnitName("target") or UnitName("player")
-end)
+end
 
-local scanner = libtipscan:GetScanner("prediction")
-hooksecurefunc("UseAction", function(slot, target, selfcast)
+local function TrackUseAction(slot, target, selfcast)
   if not libpredict.sender.enabled then return end
   if GetActionText(slot) or not IsCurrentAction(slot) then return end
   scanner:SetAction(slot)
@@ -343,10 +341,18 @@ hooksecurefunc("UseAction", function(slot, target, selfcast)
   spell_queue[1] = effect
   spell_queue[2] = effect.. ( rank or "" )
   spell_queue[3] = selfcast and UnitName("player") or UnitName("target") and UnitCanAssist("player", "target") and UnitName("target") or UnitName("player")
-end)
+end
+
+local function InstallSenderHooks()
+  if hooksInstalled then return end
+  hooksecurefunc("CastSpell", TrackCastSpell)
+  hooksecurefunc("CastSpellByName", TrackCastSpellByName)
+  hooksecurefunc("UseAction", TrackUseAction)
+  hooksInstalled = true
+end
 
 libpredict.sender = CreateFrame("Frame", "ShaguTweaksPredictionSender", UIParent)
-libpredict.sender.enabled = true
+libpredict.sender.enabled = false
 libpredict.sender.SendHealCommMsg = function(self, msg)
   SendAddonMessage("HealComm", msg, "RAID")
   SendAddonMessage("HealComm", msg, "BATTLEGROUND")
@@ -355,26 +361,6 @@ libpredict.sender.SendResCommMsg = function(self, msg)
   SendAddonMessage("CTRA", msg, "RAID")
   SendAddonMessage("CTRA", msg, "BATTLEGROUND")
 end
-
--- tbc
-libpredict.sender:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-libpredict.sender:RegisterEvent("UNIT_SPELLCAST_START")
-libpredict.sender:RegisterEvent("UNIT_SPELLCAST_STOP")
-libpredict.sender:RegisterEvent("UNIT_SPELLCAST_FAILED")
-libpredict.sender:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-libpredict.sender:RegisterEvent("UNIT_SPELLCAST_SENT")
-
--- vanilla
-libpredict.sender:RegisterEvent("CHAT_MSG_SPELL_SELF_BUFF")
-libpredict.sender:RegisterEvent("SPELLCAST_START")
-libpredict.sender:RegisterEvent("SPELLCAST_STOP")
-libpredict.sender:RegisterEvent("SPELLCAST_FAILED")
-libpredict.sender:RegisterEvent("SPELLCAST_INTERRUPTED")
-libpredict.sender:RegisterEvent("SPELLCAST_DELAYED")
-
--- force cache updates
-libpredict.sender:RegisterEvent("UNIT_INVENTORY_CHANGED")
-libpredict.sender:RegisterEvent("SKILL_LINES_CHANGED")
 
 libpredict.sender:SetScript("OnEvent", function()
   if event == "CHAT_MSG_SPELL_SELF_BUFF" then -- vanilla
@@ -483,5 +469,44 @@ libpredict.sender:SetScript("OnEvent", function()
     libpredict:HealStop(player)
   end
 end)
+
+function libpredict:Enable()
+  if self.enabled then return end
+
+  self.enabled = true
+  self.sender.enabled = true
+
+  -- incoming HealComm / resurrection tracking
+  self:RegisterEvent("UNIT_HEALTH")
+  self:RegisterEvent("CHAT_MSG_ADDON")
+  self:RegisterEvent("PLAYER_TARGET_CHANGED")
+
+  -- prediction cache lifecycle
+  resetcache:RegisterEvent("PLAYER_ENTERING_WORLD")
+  resetcache:RegisterEvent("SKILL_LINES_CHANGED")
+  resetcache:RegisterEvent("UNIT_INVENTORY_CHANGED")
+
+  -- tbc
+  self.sender:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+  self.sender:RegisterEvent("UNIT_SPELLCAST_START")
+  self.sender:RegisterEvent("UNIT_SPELLCAST_STOP")
+  self.sender:RegisterEvent("UNIT_SPELLCAST_FAILED")
+  self.sender:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+  self.sender:RegisterEvent("UNIT_SPELLCAST_SENT")
+
+  -- vanilla
+  self.sender:RegisterEvent("CHAT_MSG_SPELL_SELF_BUFF")
+  self.sender:RegisterEvent("SPELLCAST_START")
+  self.sender:RegisterEvent("SPELLCAST_STOP")
+  self.sender:RegisterEvent("SPELLCAST_FAILED")
+  self.sender:RegisterEvent("SPELLCAST_INTERRUPTED")
+  self.sender:RegisterEvent("SPELLCAST_DELAYED")
+
+  -- force cache updates
+  self.sender:RegisterEvent("UNIT_INVENTORY_CHANGED")
+  self.sender:RegisterEvent("SKILL_LINES_CHANGED")
+
+  InstallSenderHooks()
+end
 
 ShaguTweaks.libpredict = libpredict
