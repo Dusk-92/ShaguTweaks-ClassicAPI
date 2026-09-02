@@ -32,7 +32,7 @@ local onInit = libnameplate.OnInit
 local onShow = libnameplate.OnShow
 local onUpdate = libnameplate.OnUpdate
 
-libnameplate:SetScript("OnUpdate", function()
+local function ScanNameplates()
   parentcount = WorldFrame:GetNumChildren()
   if initialized < parentcount then
     childs = { WorldFrame:GetChildren() }
@@ -80,4 +80,36 @@ libnameplate:SetScript("OnUpdate", function()
 
     initialized = parentcount
   end
+end
+
+function libnameplate:HasConsumers()
+  return table.getn(onInit) > 0
+    or table.getn(onShow) > 0
+    or table.getn(onUpdate) > 0
+end
+
+function libnameplate:Enable()
+  if self.enabled then return end
+  self.enabled = true
+  self:SetScript("OnUpdate", ScanNameplates)
+end
+
+function libnameplate:EnableIfNeeded()
+  if self:HasConsumers() then
+    self:Enable()
+  end
+end
+
+-- Stay completely dormant until an enabled ShaguTweaks module (or an
+-- external addon) actually registers a nameplate callback.
+libnameplate.enabled = false
+libnameplate:SetScript("OnUpdate", nil)
+
+-- Load-on-demand addons can register callbacks after the normal ShaguTweaks
+-- initialization pass. ADDON_LOADED is enough to catch those without keeping
+-- a polling OnUpdate alive while the library is unused.
+local activation = CreateFrame("Frame")
+activation:RegisterEvent("ADDON_LOADED")
+activation:SetScript("OnEvent", function()
+  libnameplate:EnableIfNeeded()
 end)
