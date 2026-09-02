@@ -311,7 +311,7 @@ end
 
 -- Gather Data by User Actions. Hooks are installed lazily by libpredict:Enable()
 -- so disabling healing predictions leaves no spell hook on the hot path.
-local scanner = libtipscan:GetScanner("prediction")
+local scanner
 local hooksInstalled
 
 local function TrackCastSpell(id, bookType)
@@ -345,6 +345,7 @@ end
 
 local function InstallSenderHooks()
   if hooksInstalled then return end
+  scanner = scanner or libtipscan:GetScanner("prediction")
   hooksecurefunc("CastSpell", TrackCastSpell)
   hooksecurefunc("CastSpellByName", TrackCastSpellByName)
   hooksecurefunc("UseAction", TrackUseAction)
