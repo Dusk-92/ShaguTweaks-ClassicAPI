@@ -314,10 +314,20 @@ module.enable = function(self)
     DarkenFrame(_G["GameTooltipStatusBarBackdrop"])
   end)
 
-  table.insert(ShaguTweaks.libnameplate.OnUpdate, function()
-    if not this.darkened then
-      this.darkened = true
-      DarkenFrame(this)
-    end
-  end)
+  -- BlizzNameplatesPlus v1.0.8 already re-applies ShaguTweaks dark mode
+  -- through its own nameplate library. In that exact known-compatible version,
+  -- do not register a second ShaguTweaks nameplate scanner callback.
+  local bnpOwnsDarkNameplates = BNP
+    and BNP.version == "1.0.8"
+    and BNP.libnameplate
+    and BNP.shaguCompat
+
+  if not bnpOwnsDarkNameplates then
+    table.insert(ShaguTweaks.libnameplate.OnUpdate, function()
+      if not this.darkened then
+        this.darkened = true
+        DarkenFrame(this)
+      end
+    end)
+  end
 end
