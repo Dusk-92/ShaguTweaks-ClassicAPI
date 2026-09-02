@@ -84,6 +84,13 @@ ShaguTweaks:SetScript("OnEvent", function()
       mod:enable()
     end
   end
+
+  -- Libraries that can stay dormant until a module actually consumes them
+  -- get one final activation pass after every enabled module has registered
+  -- its callbacks.
+  if ShaguTweaks.libnameplate and ShaguTweaks.libnameplate.EnableIfNeeded then
+    ShaguTweaks.libnameplate:EnableIfNeeded()
+  end
 end)
 
 ShaguTweaks.register = function(self, mod)
