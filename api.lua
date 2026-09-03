@@ -72,6 +72,9 @@ API.mapexploration = type(_G.C_MapExplorationInfo) == "table"
 API.eventutils = type(_G.C_EventUtils) == "table"
   and type(_G.C_EventUtils.IsEventValid) == "function"
 
+API.timer = type(_G.C_Timer) == "table"
+  and type(_G.C_Timer.After) == "function"
+
 -- ClassicAPI v1.12.5 made nameplate lifecycle events reload-safe by clearing
 -- and rebuilding their token/wrapper state around /reload. Older builds can
 -- expose the same event names without those guarantees, so keep them on the
@@ -112,11 +115,14 @@ API.unitguid = type(_G.UnitGUID) == "function"
 API.unittoken = type(_G.UnitTokenFromGUID) == "function"
 API.tooltipunit = _G.GameTooltip
   and type(_G.GameTooltip.GetUnitGUID) == "function"
--- OnTooltipSetUnit shipped in ClassicAPI v1.8.2, but its per-tooltip
--- handler cells became reload-safe in v1.12.2. Require the fixed generation
--- instead of falling back to Vanilla OnShow/mouseover polling.
+API.tooltipitem = API.classicapi_version >= 11202
+  and _G.GameTooltip and type(_G.GameTooltip.GetItem) == "function"
+-- OnTooltipSet* shipped before v1.12.2, but their per-tooltip handler cells
+-- became reload-safe in v1.12.2. Require that fixed generation whenever a
+-- module hooks the native tooltip-builder scripts.
 API.tooltipsetunit = API.classicapi_version >= 11202
   and API.tooltipunit and API.unittoken
+API.tooltipsetitem = API.tooltipitem
 API.unitrange = type(_G.UnitInRange) == "function"
 
 API.macrospell = type(_G.GetMacroSpell) == "function"
@@ -316,6 +322,12 @@ end
 API.GetSpellReagents = function(spellID)
   if API.spellreagents and spellID then
     return _G.C_Spell.GetSpellReagents(spellID)
+  end
+end
+
+API.Defer = function(callback)
+  if API.timer and callback then
+    return _G.C_Timer.After(0, callback)
   end
 end
 
@@ -678,6 +690,13 @@ API.GetTooltipUnitGUID = function(tooltip)
   if API.tooltipunit and tooltip then
     local _, guid = tooltip:GetUnitGUID()
     return guid
+  end
+end
+
+API.GetTooltipItemID = function(tooltip)
+  if API.tooltipitem and tooltip then
+    local _, _, itemID = tooltip:GetItem()
+    return itemID
   end
 end
 
