@@ -51,16 +51,26 @@ module.enable = function(self)
 
   table.insert(ShaguTweaks.libnameplate.OnUpdate, function()
     if useClassicTokens then
-      -- No nameplate identity/class data changed since this plate was last
-      -- checked. Keep the unavoidable shared OnUpdate callback to one integer
-      -- comparison between ClassicAPI nameplate events.
-      if this.ShaguTweaksClassColorVersion == colorsVersion then return end
-      this.ShaguTweaksClassColorVersion = colorsVersion
+      -- Refresh the cached desired color only when ClassicAPI reports a
+      -- nameplate identity/class change. Turtle/Blizzard can still restore the
+      -- hostile red statusbar color later, so compare the actual bar color each
+      -- frame and write only when it drifted from the cached class color.
+      if this.ShaguTweaksClassColorVersion ~= colorsVersion then
+        this.ShaguTweaksClassColorVersion = colorsVersion
+        local name = this.name and this.name:GetText()
+        this.ShaguTweaksClassColor = name and colorsByName[name] or false
+      end
 
-      local name = this.name and this.name:GetText()
-      local color = name and colorsByName[name]
+      local color = this.ShaguTweaksClassColor
       if color then
-        this.healthbar:SetStatusBarColor(color.r, color.g, color.b, 1)
+        local r, g, b = this.healthbar:GetStatusBarColor()
+        if not r
+          or math.abs(r - color.r) > .01
+          or math.abs(g - color.g) > .01
+          or math.abs(b - color.b) > .01
+        then
+          this.healthbar:SetStatusBarColor(color.r, color.g, color.b, 1)
+        end
       end
       return
     end
