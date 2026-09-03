@@ -100,8 +100,7 @@ local function ScheduleDiscovery()
 end
 
 local function HasClassicNameplateEvents()
-  return API and API.nameplates and API.eventutils and _G.C_EventUtils
-    and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
+  return API and API.nameplateevents
 end
 
 function libnameplate:HasConsumers()

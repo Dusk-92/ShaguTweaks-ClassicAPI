@@ -320,8 +320,7 @@ module.enable = function(self)
   local listener = CreateFrame("Frame")
   local eventValid = API and API.eventutils and _G.C_EventUtils and _G.C_EventUtils.IsEventValid
 
-  if eventValid and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
-    and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_REMOVED") then
+  if API and API.nameplateevents and API.casts then
     listener:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     listener:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
     useClassicNameplateTokens = true
@@ -339,7 +338,7 @@ module.enable = function(self)
   }
 
   local hasClassicCastEvents = false
-  if eventValid then
+  if eventValid and useClassicNameplateTokens then
     for _, eventName in pairs(castEvents) do
       if _G.C_EventUtils.IsEventValid(eventName) then
         listener:RegisterEvent(eventName)
@@ -373,7 +372,8 @@ module.enable = function(self)
     end
 
     local unit = arg1
-    if unit and string.find(unit, "^nameplate%d+$") then
+    if useClassicNameplateTokens and unit
+      and string.find(unit, "^nameplate%d+$") then
       local plate = platesByUnit[unit] or AttachUnit(unit)
       if plate then RefreshPlate(plate) end
     end

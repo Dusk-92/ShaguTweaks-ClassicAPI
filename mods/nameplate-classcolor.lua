@@ -16,9 +16,7 @@ module.enable = function(self)
 
   local colorsByName = {}
   local colorsVersion = 0
-  local useClassicTokens = API and API.eventutils and _G.C_EventUtils
-    and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
-    and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_REMOVED")
+  local useClassicTokens = API and API.nameplateevents
 
   if useClassicTokens then
     local listener = CreateFrame("Frame")

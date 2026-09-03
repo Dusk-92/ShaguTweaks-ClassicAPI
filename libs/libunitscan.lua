@@ -427,8 +427,7 @@ local passiveChatEvents = {
   ["CHAT_MSG_WHISPER"] = true,
 }
 
-local useNameplateUnitEvents = API and API.eventutils and _G.C_EventUtils
-  and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
+local useNameplateUnitEvents = API and API.nameplateevents
 
 libunitscan:RegisterEvent("PLAYER_ENTERING_WORLD")
 libunitscan:RegisterEvent("PLAYER_LOGOUT")

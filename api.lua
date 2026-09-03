@@ -71,6 +71,18 @@ API.mapexploration = type(_G.C_MapExplorationInfo) == "table"
 
 API.eventutils = type(_G.C_EventUtils) == "table"
   and type(_G.C_EventUtils.IsEventValid) == "function"
+
+-- ClassicAPI v1.12.5 made nameplate lifecycle events reload-safe by clearing
+-- and rebuilding their token/wrapper state around /reload. Older builds can
+-- expose the same event names without those guarantees, so keep them on the
+-- historical ShaguTweaks discovery path instead of opting into the optimized
+-- event-driven path.
+API.nameplateevents = API.nameplates
+  and API.classicapi_version >= 11205
+  and API.eventutils
+  and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
+  and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_REMOVED")
+
 API.modifierkeys = type(_G.IsLeftShiftKeyDown) == "function"
   and type(_G.IsRightShiftKeyDown) == "function"
   and type(_G.IsLeftControlKeyDown) == "function"
