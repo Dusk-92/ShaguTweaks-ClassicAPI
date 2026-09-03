@@ -367,13 +367,49 @@ module.enable = function(self)
     table.insert(BNP.libnameplate.OnInit, ReapplyBNPDarkMode)
     table.insert(BNP.libnameplate.OnShow, ReapplyBNPDarkMode)
   else
-    -- Plain ShaguTweaks / no compatible BNP provider: preserve the original
-    -- libnameplate behavior and let the lazy library activate automatically.
-    table.insert(ShaguTweaks.libnameplate.OnUpdate, function()
-      if not this.darkened then
-        this.darkened = true
-        DarkenFrame(this)
+    -- Native ShaguTweaks nameplates only need darkening when a plate is first
+    -- discovered or shown. Avoid keeping a per-frame libnameplate callback
+    -- alive just to test the permanent "darkened" marker.
+    local pending = {}
+    local updater = CreateFrame("Frame")
+
+    local function StopUpdaterIfIdle()
+      if not next(pending) then
+        updater:SetScript("OnUpdate", nil)
       end
-    end)
+    end
+
+    local function ReapplyShaguDarkMode(plate)
+      plate = plate or this
+      if not plate or not plate:IsShown() then return end
+
+      plate.darkened = nil
+      DarkenFrame(plate)
+      plate.darkened = true
+
+      -- Some clients restore nameplate textures immediately after OnShow.
+      -- Re-apply once after that short window, then stop completely.
+      pending[plate] = GetTime() + 0.08
+      if not updater:GetScript("OnUpdate") then
+        updater:SetScript("OnUpdate", function()
+          local now = GetTime()
+          local current, due
+          for current, due in pairs(pending) do
+            if now >= due then
+              pending[current] = nil
+              if current and current:IsShown() then
+                current.darkened = nil
+                DarkenFrame(current)
+                current.darkened = true
+              end
+            end
+          end
+          StopUpdaterIfIdle()
+        end)
+      end
+    end
+
+    table.insert(ShaguTweaks.libnameplate.OnInit, ReapplyShaguDarkMode)
+    table.insert(ShaguTweaks.libnameplate.OnShow, ReapplyShaguDarkMode)
   end
 end
