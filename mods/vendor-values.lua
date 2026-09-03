@@ -3303,9 +3303,9 @@ ShaguTweaks.SellValueDB = data
 local function GetVendorPrice(id)
   if not id then return end
 
-  -- ClassicAPI is authoritative when the item is cached. Its getter warms an
-  -- uncached item in the background, so a later GET_ITEM_INFO_RECEIVED can
-  -- refresh the currently visible tooltip without any permanent polling.
+  -- ClassicAPI is authoritative when the item is cached. Its getter also warms
+  -- an uncached item in the background; the generated database below keeps the
+  -- first tooltip immediate while that cache fill completes.
   local price = API and API.GetItemSellPriceByID
     and API.GetItemSellPriceByID(id)
   if price ~= nil then
