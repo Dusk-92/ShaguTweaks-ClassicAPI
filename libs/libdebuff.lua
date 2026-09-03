@@ -26,6 +26,7 @@ local function GetScanner()
 end
 local _, class = UnitClass("player")
 local lastspell
+local useClassicAuraTiming = API and API.aurapositional and API.UnitDebuff
 
 function libdebuff:GetDuration(effect, rank)
   if L["debuffs"][effect] then
@@ -141,17 +142,18 @@ end
 -- combat-text parser only exists to reconstruct off-target applications on
 -- older ClassicAPI builds; current ClassicAPI does not register those noisy
 -- events at all.
-if not (API and API.aurapositional and API.UnitDebuff) then
+if not useClassicAuraTiming then
   libdebuff:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_HOSTILEPLAYER_DAMAGE")
   libdebuff:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_CREATURE_DAMAGE")
+  libdebuff:RegisterEvent("CHAT_MSG_SPELL_FAILED_LOCALPLAYER")
+  libdebuff:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+  libdebuff:RegisterEvent("SPELLCAST_STOP")
 end
 
--- These events still support the legacy estimated-duration fallback when an
--- exact expiration time is unavailable.
-libdebuff:RegisterEvent("CHAT_MSG_SPELL_FAILED_LOCALPLAYER")
-libdebuff:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+-- Target changes and aura updates are still useful for the rare fallback case
+-- where ClassicAPI knows an aura's duration but could not observe its original
+-- application and therefore has no expirationTime.
 libdebuff:RegisterEvent("PLAYER_TARGET_CHANGED")
-libdebuff:RegisterEvent("SPELLCAST_STOP")
 libdebuff:RegisterEvent("UNIT_AURA")
 
 -- register seal handler
@@ -212,11 +214,12 @@ libdebuff:SetScript("OnEvent", function()
       -- abort when no further debuff was found
       if not texture then break end
 
-      if effect and effect ~= "" then
-        -- Don't overwrite existing timers. Defer the expensive target-frame
-        -- refresh until the complete aura pass is done.
+      if effect and effect ~= "" and (not timeleft or timeleft < 0) then
+        -- Exact ClassicAPI timing needs no legacy cache at all. Only construct
+        -- an estimate when expirationTime is genuinely unavailable.
         if not libdebuff.objects[unit] or not libdebuff.objects[unit][unitlevel] or not libdebuff.objects[unit][unitlevel][effect] then
-          libdebuff:AddEffect(unit, unitlevel, effect, nil, true)
+          local fallbackDuration = duration and duration > 0 and duration or nil
+          libdebuff:AddEffect(unit, unitlevel, effect, fallbackDuration, true)
           changed = true
         end
       end
@@ -253,7 +256,10 @@ libdebuff:SetScript("OnEvent", function()
   end
 end)
 
--- Gather Data by User Actions
+-- Gather Data by User Actions.
+-- Current ClassicAPI gets exact application timing from C_UnitAuras, so these
+-- legacy prediction hooks are installed only when that timing surface is absent.
+if not useClassicAuraTiming then
 hooksecurefunc("CastSpell", function(id, bookType)
   local effect, rank = GetSpellName(id, bookType)
   if not effect or not L["debuffs"][effect] then return end
@@ -308,6 +314,7 @@ hooksecurefunc("UseAction", function(slot, target, button)
   local duration = libdebuff:GetDuration(effect, rank)
   libdebuff:AddPending(UnitName("target"), UnitLevel("target"), effect, duration)
 end)
+end
 
 function libdebuff:UnitDebuff(unit, id)
   local unitname = UnitName(unit)
@@ -316,11 +323,21 @@ function libdebuff:UnitDebuff(unit, id)
   local duration, timeleft = nil, -1
   local rank = nil -- no backport
 
-  -- ClassicAPI already exposes the aura name together with the positional
-  -- debuff data. Prefer it here so UNIT_AURA refreshes don't need to build and
-  -- scan up to 16 hidden tooltips just to recover each effect name.
-  if API and API.aurapositional and API.UnitDebuff then
-    effect, texture, stacks, dtype = API.UnitDebuff(unit, id)
+  -- ClassicAPI returns positional aura metadata without allocating a table.
+  -- When it observed the application, use its exact duration/expiration
+  -- immediately and bypass the legacy name/level estimate entirely.
+  if useClassicAuraTiming then
+    local expirationTime
+    effect, texture, stacks, dtype, duration, expirationTime =
+      API.UnitDebuff(unit, id)
+
+    if texture and duration and duration > 0
+      and expirationTime and expirationTime > 0
+    then
+      timeleft = expirationTime - GetTime()
+      if timeleft < 0 then timeleft = 0 end
+      return effect, rank, texture, stacks, dtype, duration, timeleft
+    end
   end
 
   -- Plain Vanilla / older ClassicAPI compatibility. Also acts as a defensive
