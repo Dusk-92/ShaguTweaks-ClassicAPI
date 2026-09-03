@@ -240,7 +240,9 @@ module.enable = function(self)
   -- ClassicAPI fires this after the native unit-tooltip builder completes.
   -- This replaces OnShow + UPDATE_MOUSEOVER_UNIT identity refreshes.
   GameTooltip:HookScript("OnTooltipSetUnit", UpdateTooltip)
-  GameTooltip:HookScript("OnHide", ResetTooltipState)
+  -- OnTooltipCleared fires for every new Set* path, not only when the frame
+  -- hides, so unit-only state cannot leak into a following item/spell tooltip.
+  GameTooltip:HookScript("OnTooltipCleared", ResetTooltipState)
 
   -- StatusBar already has a native value-change script, so health text can be
   -- event-driven too. No permanent OnUpdate is needed.
