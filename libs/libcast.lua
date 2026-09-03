@@ -1,5 +1,6 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local L = ShaguTweaks.L
+local API = ShaguTweaks.API
 local GetExpansion = ShaguTweaks.GetExpansion
 local libtipscan = ShaguTweaks.libtipscan
 local libspell = ShaguTweaks.libspell
@@ -32,7 +33,13 @@ for i=1,40 do valid_units["raid" .. i .. "target"] = true end
 for i=1,40 do valid_units["raidpet" .. i .. "target"] = true end
 
 local lastcasttex, lastrank, _
-local scanner = libtipscan:GetScanner("libcast")
+local scanner
+local function GetScanner()
+  if not scanner then
+    scanner = libtipscan:GetScanner("libcast")
+  end
+  return scanner
+end
 
 local libcast = CreateFrame("Frame", "ShaguTweaksEnemyCast")
 local player = UnitName("player")
@@ -139,25 +146,30 @@ end
 -- main data
 libcast.db = { [player] = {} }
 
--- environmental casts
-libcast:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_HOSTILEPLAYER_BUFF")
-libcast:RegisterEvent("CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_FRIENDLYPLAYER_BUFF")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_HOSTILEPLAYER_BUFFS")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_BUFFS")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_HOSTILEPLAYER_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PARTY_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PARTY_BUFF")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_PARTY_BUFFS")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_CREATURE_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_CREATURE_BUFFS")
-libcast:RegisterEvent("CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE")
-libcast:RegisterEvent("CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF")
+-- ClassicAPI exposes remote cast state directly through C_Spell and the
+-- UNIT_SPELLCAST_* event family used by the castbar modules. Keep the original
+-- combat-text parser only for older ClassicAPI builds that lack that surface;
+-- on current ClassicAPI these high-frequency chat events stay unregistered.
+if not (API and API.casts) then
+  libcast:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_HOSTILEPLAYER_BUFF")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_FRIENDLYPLAYER_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_FRIENDLYPLAYER_BUFF")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_HOSTILEPLAYER_BUFFS")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_BUFFS")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_HOSTILEPLAYER_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_FRIENDLYPLAYER_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PARTY_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PARTY_BUFF")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_PARTY_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_PARTY_BUFFS")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_CREATURE_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_CREATURE_BUFFS")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE")
+  libcast:RegisterEvent("CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF")
+end
 
 -- player spells
 libcast:RegisterEvent("SPELLCAST_START")
@@ -387,22 +399,23 @@ hooksecurefunc("UseContainerItem", function(id, index)
 end)
 
 hooksecurefunc("CastSpell", function(id, bookType)
-  _, lastrank = libspell.GetSpellInfo(id, bookType)
+  local spellName, rank = GetSpellName(id, bookType)
+  lastrank = rank
   lastcasttex = GetSpellTexture(id, bookType)
 
   if GetSpellCooldown(id, bookType) ~= 0 then
-    local spellName = GetSpellName(id, bookType)
     CastCustom(spellName)
   end
 end)
 
 hooksecurefunc("CastSpellByName", function(spell, target)
-  _, lastrank = libspell.GetSpellInfo(spell)
-
-  -- Only Aimed Shot and Multi-Shot need this legacy action scan. Avoid walking
-  -- all 120 action slots for every ordinary CastSpellByName macro invocation.
+  -- Only Aimed Shot and Multi-Shot need the legacy custom-cast emulation.
+  -- Ordinary macro casts can return immediately instead of resolving their
+  -- spellbook rank on every invocation.
   local custom = GetCustomCast(spell)
   if not custom then return end
+
+  _, lastrank = libspell.GetSpellInfo(spell)
 
   for i=1,120 do
     -- detect if any cast is ongoing
@@ -416,13 +429,39 @@ hooksecurefunc("CastSpellByName", function(spell, target)
 end)
 
 hooksecurefunc("UseAction", function(slot, target, button)
-  scanner:SetAction(slot)
-  local spellName, rank = scanner:Line(1)
+  -- ClassicAPI identifies action slots in native code. This avoids building a
+  -- hidden tooltip for every button press, while keeping the old scanner as a
+  -- cold compatibility path for an older ClassicAPI action surface.
+  if API and API.actioninfo and API.GetActionInfo then
+    local actionType, actionID = API.GetActionInfo(slot)
+
+    if actionType == "macro" then
+      -- The real spell selected by a conditional macro is handled later by
+      -- CastSpellByName. Do not guess it from the macro's first cast line.
+      return
+    elseif actionType == "item" then
+      lastcasttex = GetActionTexture(slot)
+      lastrank = nil
+      return
+    elseif actionType == "spell" and actionID then
+      local spellName, rank, icon = API.GetSpellInfo(actionID)
+      lastcasttex = icon or GetActionTexture(slot)
+      lastrank = rank
+      if not IsCurrentAction(slot) then return end
+      CastCustom(spellName)
+      return
+    elseif actionType then
+      return
+    end
+  end
+
+  if GetActionText(slot) or not IsCurrentAction(slot) then return end
+  local tip = GetScanner()
+  tip:SetAction(slot)
+  local spellName, rank = tip:Line(1)
 
   lastcasttex = GetActionTexture(slot)
   lastrank = rank
-
-  if GetActionText(slot) or not IsCurrentAction(slot) then return end
   CastCustom(spellName)
 end)
 
