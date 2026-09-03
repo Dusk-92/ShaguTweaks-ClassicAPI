@@ -109,6 +109,13 @@ API.playerstate = type(_G.IsMounted) == "function"
   and type(_G.CancelShapeshiftForm) == "function"
 
 API.unitguid = type(_G.UnitGUID) == "function"
+API.unittoken = type(_G.UnitTokenFromGUID) == "function"
+API.tooltipunit = _G.GameTooltip
+  and type(_G.GameTooltip.GetUnitGUID) == "function"
+-- OnTooltipSetUnit shipped in ClassicAPI v1.8.2. Tooltip Details uses this
+-- native builder event directly instead of Vanilla OnShow/mouseover polling.
+API.tooltipsetunit = API.classicapi_version >= 10802
+  and API.tooltipunit and API.unittoken
 API.unitrange = type(_G.UnitInRange) == "function"
 
 API.macrospell = type(_G.GetMacroSpell) == "function"
@@ -657,6 +664,19 @@ end
 API.UnitGUID = function(unit)
   if API.unitguid then
     return _G.UnitGUID(unit)
+  end
+end
+
+API.UnitTokenFromGUID = function(guid)
+  if API.unittoken and guid then
+    return _G.UnitTokenFromGUID(guid)
+  end
+end
+
+API.GetTooltipUnitGUID = function(tooltip)
+  if API.tooltipunit and tooltip then
+    local _, guid = tooltip:GetUnitGUID()
+    return guid
   end
 end
 
