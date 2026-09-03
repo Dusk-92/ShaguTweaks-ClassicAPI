@@ -10,7 +10,10 @@ local module = ShaguTweaks:register({
 })
 
 module.enable = function(self)
-  if not API.loothistoryevents or not API.modifierkeys then return end
+  if not API.loothistoryevents or not API.modifierkeys
+    or not API.iteminfoinstant or not API.lootrollitemid then
+    return
+  end
 
   local _G = ShaguTweaks.GetGlobalEnv()
   local font_default, font_size = "Fonts\\skurri.TTF", 15
@@ -31,21 +34,19 @@ module.enable = function(self)
     end
   end
 
-  local function LinksMatch(nativeLink, historyLink)
-    if not nativeLink or not historyLink then return false end
-    if nativeLink == historyLink then return true end
-    return string.find(nativeLink, historyLink, 1, true) and true or false
-  end
+  local function FindUnclaimedHistory(itemID, claimed)
+    if not itemID then return end
 
-  local function FindUnclaimedHistory(nativeLink, claimed)
     local numItems = API.GetLootHistoryNumItems()
 
     -- New group rolls are appended to C_LootHistory. Search newest first so
     -- the frame opened by the current START_ROLL binds to that new entry.
     for i=numItems,1,-1 do
       local historyRollID, historyLink = API.GetLootHistoryItem(i)
-      if historyRollID and not claimed[historyRollID]
-        and LinksMatch(nativeLink, historyLink) then
+      local historyItemID = historyLink and API.GetItemInfoInstant(historyLink)
+
+      if historyRollID and historyItemID == itemID
+        and not claimed[historyRollID] then
         return historyRollID, i
       end
     end
@@ -115,9 +116,9 @@ module.enable = function(self)
       local frame = ShaguTweaks.roll.frames[i]
       if frame and frame:IsVisible() and frame.rollID
         and not frame.historyRollID then
-        local nativeLink = frame.historyLink or GetLootRollItemLink(frame.rollID)
+        local itemID = frame.itemID or API.GetLootRollItemID(frame.rollID)
         local historyRollID, itemIndex =
-          FindUnclaimedHistory(nativeLink, claimed)
+          FindUnclaimedHistory(itemID, claimed)
 
         if historyRollID then
           frame.historyRollID = historyRollID
@@ -351,7 +352,7 @@ module.enable = function(self)
           frame:Hide()
           frame.rollID = nil
           frame.historyRollID = nil
-          frame.historyLink = nil
+          frame.itemID = nil
           frame.need.count:SetText("")
           frame.greed.count:SetText("")
           frame.pass.count:SetText("")
@@ -397,7 +398,7 @@ module.enable = function(self)
       frame.rollID = id
       frame.rollTime = rollTime
       frame.historyRollID = nil
-      frame.historyLink = GetLootRollItemLink(id)
+      frame.itemID = API.GetLootRollItemID(id)
       ShaguTweaks.roll:UpdateLootRoll(available)
     end
   end
