@@ -196,7 +196,10 @@ module.enable = function(self)
       if type(original) == "function" and original ~= installed[method] then
         local wrapper = function(frame, a1, a2, a3)
           local outer = fillDepth == 0
-          if outer then context = {} end
+          if outer then
+            context = {}
+            ClearPending(frame)
+          end
 
           -- If an outer virtual bag method cannot identify an item, allow a
           -- nested real SetInventoryItem/SetHyperlink call to provide it.
@@ -244,6 +247,7 @@ module.enable = function(self)
 
     local wrapper = function(link, text, button)
       local outer = itemRefDepth == 0
+      if outer then ClearPending(ItemRefTooltip) end
       local itemID = outer and GetItemIDFromLink(link) or nil
 
       itemRefDepth = itemRefDepth + 1
