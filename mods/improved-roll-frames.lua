@@ -61,7 +61,10 @@ module.enable = function(self)
     for i=1,(numPlayers or 0) do
       local name, class, rollType, roll, isWinner, isMe =
         API.GetLootHistoryPlayerInfo(itemIndex, i)
-      if name and not isMe and rollType == wantedType then
+      -- C_LootHistory may synthesize a winner row when its individual roll
+      -- packet never arrived. That row has roll=0; don't mislabel it as Pass.
+      if name and not isMe and not (isWinner and roll == 0)
+        and rollType == wantedType then
         table.insert(players, name)
       end
     end
@@ -86,7 +89,7 @@ module.enable = function(self)
 
       -- The original chat parser deliberately ignored "You"; preserve that
       -- behavior by not counting the local player's own roll.
-      if name and not isMe then
+      if name and not isMe and not (isWinner and roll == 0) then
         if rollType == 1 then
           need = need + 1
         elseif rollType == 2 then
@@ -104,6 +107,19 @@ module.enable = function(self)
 
   local function BindVisibleFrames()
     local claimed = {}
+
+    -- FULL_UPDATE can also mean the history was cleared or the 128-entry ring
+    -- evicted an old row. Drop stale bindings before assigning new ones.
+    for i=1,ROLL_FRAME_COUNT do
+      local frame = ShaguTweaks.roll.frames[i]
+      if frame and frame.historyRollID
+        and not FindHistoryIndex(frame.historyRollID) then
+        frame.historyRollID = nil
+        frame.need.count:SetText("")
+        frame.greed.count:SetText("")
+        frame.pass.count:SetText("")
+      end
+    end
 
     for i=1,ROLL_FRAME_COUNT do
       local frame = ShaguTweaks.roll.frames[i]
