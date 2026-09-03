@@ -15,6 +15,7 @@ module.enable = function(self)
   if ShaguPlates then return end
 
   local colorsByName = {}
+  local colorsVersion = 0
   local useClassicTokens = API and API.eventutils and _G.C_EventUtils
     and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
     and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_REMOVED")
@@ -40,17 +41,22 @@ module.enable = function(self)
           color = class and RAID_CLASS_COLORS[class] or nil
         end
         colorsByName[name] = color or false
+        colorsVersion = colorsVersion + 1
       elseif event == "NAME_PLATE_UNIT_REMOVED" then
         colorsByName[name] = nil
+        colorsVersion = colorsVersion + 1
       end
     end)
   end
 
   table.insert(ShaguTweaks.libnameplate.OnUpdate, function()
     if useClassicTokens then
-      -- libnameplate owns the real native frame. The token listener above only
-      -- caches exact class information, so this hot path is just one name read
-      -- and one table lookup with no TargetByName scan and no C frame wrapper.
+      -- No nameplate identity/class data changed since this plate was last
+      -- checked. Keep the unavoidable shared OnUpdate callback to one integer
+      -- comparison between ClassicAPI nameplate events.
+      if this.ShaguTweaksClassColorVersion == colorsVersion then return end
+      this.ShaguTweaksClassColorVersion = colorsVersion
+
       local name = this.name and this.name:GetText()
       local color = name and colorsByName[name]
       if color then
