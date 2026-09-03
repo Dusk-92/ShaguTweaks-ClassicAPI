@@ -52,6 +52,8 @@ API.containeriteminfo = type(_G.C_Container) == "table"
 
 API.items = type(_G.C_Item) == "table"
 API.iteminfo = API.items and type(_G.C_Item.GetItemInfo) == "function"
+API.iteminfoinstant = API.items
+  and type(_G.C_Item.GetItemInfoInstant) == "function"
 API.itemname = API.items and type(_G.C_Item.GetItemNameByID) == "function"
 API.itemquality = API.items and type(_G.C_Item.GetItemQualityByID) == "function"
 API.itemprice = API.items and type(_G.C_Item.GetItemSellPriceByID) == "function"
@@ -112,6 +114,7 @@ API.loothistoryevents = API.loothistory and API.eventutils
   and _G.C_EventUtils.IsEventValid("LOOT_HISTORY_ROLL_CHANGED")
   and _G.C_EventUtils.IsEventValid("LOOT_HISTORY_ROLL_COMPLETE")
   and _G.C_EventUtils.IsEventValid("LOOT_HISTORY_FULL_UPDATE")
+API.lootrollitemid = type(_G.GetLootRollItemID) == "function"
 
 API.overridebindings = type(_G.SetOverrideBindingClick) == "function"
   and type(_G.ClearOverrideBindings) == "function"
@@ -443,6 +446,12 @@ API.GetItemInfo = function(item)
     return _G.C_Item.GetItemInfo(item)
   end
   return _G.GetItemInfo(item)
+end
+
+API.GetItemInfoInstant = function(item)
+  if API.iteminfoinstant and item then
+    return _G.C_Item.GetItemInfoInstant(item)
+  end
 end
 
 API.GetItemNameByID = function(itemID)
