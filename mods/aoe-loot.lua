@@ -1,6 +1,7 @@
 -- Adapted from AoELoot by Sandrea / ChatGPT for ShaguTweaks-ClassicAPI.
 
 local T = ShaguTweaks.T
+local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["AoE Loot"],
@@ -11,15 +12,18 @@ local module = ShaguTweaks:register({
 })
 
 module.enable = function(self)
+  -- AoE Loot relies entirely on ClassicAPI's native corpse walker and
+  -- container classification. Do not keep partial legacy behavior when those
+  -- capabilities are unavailable.
+  if not API or not API.aoeloot or not API.containeropenable then return end
+
   local frame = CreateFrame("Frame", "ShaguTweaksAoELoot")
   local pending = false
   local releaseDeadline = 0
   local containerLootDeadline = 0
 
   local function TrackContainerUse(bag, slot)
-    if not C_Container or not C_Container.IsContainerItemOpenable then return end
-
-    local isOpenable, canOpen = C_Container.IsContainerItemOpenable(bag, slot)
+    local isOpenable, canOpen = API.IsContainerItemOpenable(bag, slot)
     if isOpenable and canOpen then
       -- LOOT_OPENED is also fired by clams, lockboxes and similar bag items.
       -- Mark that session before UseContainerItem runs so it remains under the
@@ -39,21 +43,12 @@ module.enable = function(self)
 
   local function CanStartAoELoot()
     if IsMasterLootActive() then return false end
-    if not C_Loot or not C_Loot.LootAllCorpses then return false end
-
-    if C_Loot.IsScanInProgress and C_Loot.IsScanInProgress() then
-      return false
-    end
-
+    if API.IsLootScanInProgress() then return false end
     return true
   end
 
   local function HasNearbyLootableCorpse()
-    -- Older ClassicAPI builds may not expose the query yet. Keep AoE Loot
-    -- functional there; the container hook above still protects bag items.
-    if not C_Loot or not C_Loot.GetNearbyLootableUnits then return true end
-
-    local units = C_Loot.GetNearbyLootableUnits()
+    local units = API.GetNearbyLootableUnits()
     return type(units) == "table" and table.getn(units) > 0
   end
 
@@ -64,7 +59,7 @@ module.enable = function(self)
     releaseDeadline = 0
 
     if CanStartAoELoot() then
-      C_Loot.LootAllCorpses()
+      API.LootAllCorpses()
     end
   end
 
