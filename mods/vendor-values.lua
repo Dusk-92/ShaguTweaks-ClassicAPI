@@ -3317,43 +3317,17 @@ local function GetVendorPrice(id)
   return ShaguTweaks.SellValueDB and ShaguTweaks.SellValueDB[id]
 end
 
-local pendingTooltip, pendingItemID, pendingCount, pendingIgnoreMerchant
-
-local function ClearPending(frame)
-  if not frame or pendingTooltip == frame then
-    pendingTooltip, pendingItemID, pendingCount, pendingIgnoreMerchant =
-      nil, nil, nil, nil
-  end
-end
-
 local function AddVendorPrices(frame, id, count, ignoreMerchant)
   if not frame or not id then return end
-  if not ignoreMerchant and MerchantFrame:IsShown() then
-    ClearPending(frame)
-    return
-  end
+  if not ignoreMerchant and MerchantFrame:IsShown() then return end
 
   local price = GetVendorPrice(id)
   count = math.max(tonumber(count) or 1, 1)
 
-  if price ~= nil then
-    ClearPending(frame)
-    if price > 0 then
-      SetTooltipMoney(frame, price * count)
-      frame:Show()
-      return true
-    end
-    return
-  end
-
-  -- ClassicAPI returns nil for an uncached record and starts loading it.
-  -- Remember only one visible tooltip; the event handler below retries once
-  -- the exact item arrives.
-  if API and API.itemprice then
-    pendingTooltip = frame
-    pendingItemID = id
-    pendingCount = count
-    pendingIgnoreMerchant = ignoreMerchant
+  if price and price > 0 then
+    SetTooltipMoney(frame, price * count)
+    frame:Show()
+    return true
   end
 end
 
@@ -3363,27 +3337,6 @@ local function AddVendorPriceFromLink(frame, link, count, ignoreMerchant)
 end
 
 module.enable = function(self)
-  -- Refresh a tooltip whose ClassicAPI item record was still loading. This is
-  -- event-driven and completely dormant when no item price is pending.
-  if API and API.eventutils and _G.C_EventUtils
-    and _G.C_EventUtils.IsEventValid("GET_ITEM_INFO_RECEIVED") then
-    local priceEvents = CreateFrame("Frame")
-    priceEvents:RegisterEvent("GET_ITEM_INFO_RECEIVED")
-    priceEvents:SetScript("OnEvent", function()
-      if not pendingTooltip or not pendingItemID or arg1 ~= pendingItemID then
-        return
-      end
-
-      if not pendingTooltip:IsShown() then
-        ClearPending()
-        return
-      end
-
-      AddVendorPrices(
-        pendingTooltip, pendingItemID, pendingCount, pendingIgnoreMerchant)
-    end)
-  end
-
   -- Every tooltip setter is described once here. Prefer ClassicAPI's direct
   -- item IDs; link parsing remains only as a cold compatibility path inside
   -- api.lua or for SetHyperlink/SetCraftSpell where a link is the natural API.
