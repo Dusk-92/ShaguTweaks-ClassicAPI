@@ -19,7 +19,6 @@ module.enable = function(self)
 
   local frame = CreateFrame("Frame", "ShaguTweaksAoELoot")
   local pending = false
-  local releaseDeadline = 0
   local containerLootDeadline = 0
 
   local function TrackContainerUse(bag, slot)
@@ -53,78 +52,60 @@ module.enable = function(self)
   end
 
   local function StartAoELoot()
-    -- Defer for one frame so the normal loot session can close cleanly.
     frame:SetScript("OnUpdate", nil)
     pending = false
-    releaseDeadline = 0
 
     if CanStartAoELoot() then
       API.LootAllCorpses()
     end
   end
 
-  local function QueueAoELoot()
-    releaseDeadline = 0
+  local function ResolveLootSession()
+    -- Give the client's own autoloot path one frame to act before taking over.
+    -- This avoids closing the loot session underneath SuperWoW/SuperAPI or a
+    -- quickloot-patched client while remaining independent of either mod.
+    frame:SetScript("OnUpdate", nil)
+    if not pending then return end
+
+    -- Manual loot still has items after that frame. Close only in that case;
+    -- when native autoloot already emptied/closed the session, leave it alone.
+    if GetNumLootItems and GetNumLootItems() > 0 then
+      CloseLoot()
+    end
+
+    -- The original path already waits one frame after CloseLoot before handing
+    -- control to ClassicAPI. Keep that release frame for both manual and native
+    -- autoloot paths.
     frame:SetScript("OnUpdate", StartAoELoot)
   end
 
-  local function WaitForLootRelease()
-    -- Native Auto Loot can finish before this module receives LOOT_OPENED.
-    -- In that case LOOT_CLOSED has already passed, so use the empty session
-    -- as a fallback and queue the ClassicAPI walk on the following frame.
-    if pending and (not GetNumLootItems or GetNumLootItems() == 0) then
-      QueueAoELoot()
-    elseif pending and GetTime() >= releaseDeadline then
-      -- Never leave a per-frame waiter behind if the native loot session
-      -- cannot finish, for example because every inventory bag is full.
-      pending = false
-      releaseDeadline = 0
-      frame:SetScript("OnUpdate", nil)
-    end
-  end
-
   frame:RegisterEvent("LOOT_OPENED")
-  frame:RegisterEvent("LOOT_CLOSED")
 
   frame:SetScript("OnEvent", function()
-    if event == "LOOT_OPENED" then
-      -- Inventory containers use the same loot events as corpses. Let the
-      -- normal client finish them instead of closing their loot session.
-      if containerLootDeadline > 0 then
-        local isContainerLoot = GetTime() <= containerLootDeadline
-        containerLootDeadline = 0
-        if isContainerLoot then return end
-      end
+    if event ~= "LOOT_OPENED" then return end
 
-      -- The master looter must keep the normal window to inspect and assign loot.
-      if IsMasterLootActive() then
-        pending = false
-        releaseDeadline = 0
-        frame:SetScript("OnUpdate", nil)
-        return
-      end
+    -- Inventory containers use the same loot event as corpses. Let the normal
+    -- client finish them instead of treating them as an AoE-loot trigger.
+    if containerLootDeadline > 0 then
+      local isContainerLoot = GetTime() <= containerLootDeadline
+      containerLootDeadline = 0
+      if isContainerLoot then return end
+    end
 
-      -- Chests, fishing nodes and other non-corpse sources also emit
-      -- LOOT_OPENED. AoE Loot only has work to do when ClassicAPI can actually
-      -- see at least one nearby lootable unit.
-      if not HasNearbyLootableCorpse() then return end
-
-      if pending or not CanStartAoELoot() then return end
-
-      pending = true
-      releaseDeadline = GetTime() + 3
-      frame:SetScript("OnUpdate", WaitForLootRelease)
-
-      -- Close the normal session so ClassicAPI can take over. The temporary
-      -- waiter also handles clients whose native Auto Loot already completed
-      -- and fired LOOT_CLOSED before this module received LOOT_OPENED.
-      CloseLoot()
-
+    -- The master looter must keep the normal window to inspect and assign loot.
+    if IsMasterLootActive() then
+      pending = false
+      frame:SetScript("OnUpdate", nil)
       return
     end
 
-    if event == "LOOT_CLOSED" and pending then
-      QueueAoELoot()
-    end
+    -- Chests, fishing nodes and other non-corpse sources also emit LOOT_OPENED.
+    -- Only take over when ClassicAPI can see at least one nearby lootable unit.
+    if not HasNearbyLootableCorpse() then return end
+
+    if pending or not CanStartAoELoot() then return end
+
+    pending = true
+    frame:SetScript("OnUpdate", ResolveLootSession)
   end)
 end
