@@ -1,4 +1,5 @@
 local T = ShaguTweaks.T
+local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["Minimap Clean"],
@@ -120,6 +121,11 @@ module.enable = function(self)
   local THROTTLE = 0.1
   local MARGIN = 30
 
+  -- ClassicAPI's native Region:IsMouseOver handles cursor scaling and frame
+  -- bounds directly. Without that capability, leave the feature inactive
+  -- instead of restoring the old permanent Lua coordinate polling path.
+  if not API or not API.regionmouseover then return end
+
   self.frame = self.frame or CreateFrame("Frame")
 
   -- Prime the cache once. Future scans only happen when the minimap child count
@@ -131,18 +137,7 @@ module.enable = function(self)
     if self.elapsed < THROTTLE then return end
     self.elapsed = 0
 
-    local x, y = GetCursorPosition()
-    local scale = Minimap:GetEffectiveScale()
-    local mx, my = x / scale, y / scale
-
-    local left = Minimap:GetLeft()
-    local right = Minimap:GetRight()
-    local bottom = Minimap:GetBottom()
-    local top = Minimap:GetTop()
-    if not left or not right or not bottom or not top then return end
-
-    local isOver = mx >= (left - MARGIN) and mx <= (right + MARGIN)
-      and my >= (bottom - MARGIN) and my <= (top + MARGIN)
+    local isOver = API.IsMouseOver(Minimap, MARGIN, -MARGIN, -MARGIN, MARGIN)
 
     if isOver then
       self.leaveTime = nil

@@ -77,6 +77,9 @@ API.eventutils = type(_G.C_EventUtils) == "table"
 API.timer = type(_G.C_Timer) == "table"
   and type(_G.C_Timer.After) == "function"
 
+API.regionmouseover = _G.UIParent
+  and type(_G.UIParent.IsMouseOver) == "function"
+
 -- ClassicAPI v1.12.5 made nameplate lifecycle events reload-safe by clearing
 -- and rebuilding their token/wrapper state around /reload. Older builds can
 -- expose the same event names without those guarantees, so keep them on the
@@ -360,6 +363,14 @@ API.Defer = function(callback)
   if API.timer and callback then
     return _G.C_Timer.After(0, callback)
   end
+end
+
+API.IsMouseOver = function(region, topOffset, bottomOffset, leftOffset, rightOffset)
+  if API.regionmouseover and region then
+    return region:IsMouseOver(topOffset, bottomOffset, leftOffset, rightOffset)
+      and true or false
+  end
+  return false
 end
 
 API.GetContainerNumFreeSlots = function(bag)
