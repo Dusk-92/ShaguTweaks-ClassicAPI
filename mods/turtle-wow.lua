@@ -88,37 +88,44 @@ module.enable = function(self)
   L["debuffs"]['Moonfire'] = {[1]=9.0,[2]=18.0,[3]=18.0,[4]=18.0,[5]=18.0,[6]=18.0,[7]=18.0,[8]=18.0,[9]=18.0,[10]=18.0,[0]=18.0}
 end
 
--- Turtle WoW specific libdebuff patches
+-- Turtle WoW specific libdebuff patches. Only Paladins and Warlocks
+-- can trigger these cases, so other classes should not parse every spell-damage
+-- chat line for strings they can never produce.
 local libdebuff = ShaguTweaks.libdebuff
-local libdebuff_twow = CreateFrame("Frame")
-libdebuff_twow:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
-libdebuff_twow:SetScript("OnEvent", function()
-  -- Break early on invalid data
-  if not arg1 or not arg2 then return end
+local _, playerClass = UnitClass("player")
+if playerClass == "PALADIN" or playerClass == "WARLOCK" then
+  local libdebuff_twow = CreateFrame("Frame")
+  libdebuff_twow:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+  libdebuff_twow:SetScript("OnEvent", function()
+    -- Break early on invalid data
+    if not arg1 or not arg2 then return end
 
-  -- Holy Strike is a spell, but can refresh paladin judgements
-  -- Credits to @geojak
-  if string.find(arg1, "Holy Strike") then
-    for seal in ShaguTweaks.L["judgements"] do
-      local name = UnitName("target")
-      local level = UnitLevel("target")
-      if name and libdebuff.objects[name] then
-        if level and libdebuff.objects[name][level] and libdebuff.objects[name][level][seal] then
-          libdebuff:AddEffect(name, level, seal)
-        elseif libdebuff.objects[name][0] and libdebuff.objects[name][0][seal] then
-          libdebuff:AddEffect(name, 0, seal)
+    -- Holy Strike is a spell, but can refresh paladin judgements
+    -- Credits to @geojak
+    if playerClass == "PALADIN" and string.find(arg1, "Holy Strike") then
+      for seal in ShaguTweaks.L["judgements"] do
+        local name = UnitName("target")
+        local level = UnitLevel("target")
+        if name and libdebuff.objects[name] then
+          if level and libdebuff.objects[name][level] and libdebuff.objects[name][level][seal] then
+            libdebuff:AddEffect(name, level, seal)
+          elseif libdebuff.objects[name][0] and libdebuff.objects[name][0][seal] then
+            libdebuff:AddEffect(name, 0, seal)
+          end
         end
       end
     end
-  end
 
-  -- refresh Immolate duration after cast Conflagrate
-  if string.find(arg1, "Conflagrate") then
-    local name = UnitName("target")
-    local level = UnitLevel("target")
-    if libdebuff.objects[name] and libdebuff.objects[name][level] and libdebuff.objects[name][level]["Immolate"] then
-      local duration = libdebuff.objects[name][level]["Immolate"].duration
-      libdebuff:UpdateDuration(name, level, "Immolate", duration - 3)
+    -- refresh Immolate duration after cast Conflagrate
+    if playerClass == "WARLOCK" and string.find(arg1, "Conflagrate") then
+      local name = UnitName("target")
+      local level = UnitLevel("target")
+      if name and level and libdebuff.objects[name] and libdebuff.objects[name][level]
+        and libdebuff.objects[name][level]["Immolate"]
+      then
+        local duration = libdebuff.objects[name][level]["Immolate"].duration
+        libdebuff:UpdateDuration(name, level, "Immolate", duration - 3)
+      end
     end
-  end
-end)
+  end)
+end
