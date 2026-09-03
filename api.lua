@@ -52,6 +52,8 @@ API.containeriteminfo = type(_G.C_Container) == "table"
 
 API.items = type(_G.C_Item) == "table"
 API.iteminfo = API.items and type(_G.C_Item.GetItemInfo) == "function"
+API.iteminfoinstant = API.items
+  and type(_G.C_Item.GetItemInfoInstant) == "function"
 API.itemname = API.items and type(_G.C_Item.GetItemNameByID) == "function"
 API.itemquality = API.items and type(_G.C_Item.GetItemQualityByID) == "function"
 API.itemprice = API.items and type(_G.C_Item.GetItemSellPriceByID) == "function"
@@ -102,6 +104,17 @@ API.merchantiteminfo = type(_G.C_MerchantFrame) == "table"
   and type(_G.C_MerchantFrame.GetItemInfo) == "function"
 API.buybackitemid = type(_G.C_MerchantFrame) == "table"
   and type(_G.C_MerchantFrame.GetBuybackItemID) == "function"
+
+API.loothistory = API.classicapi_version >= 11202
+  and type(_G.C_LootHistory) == "table"
+  and type(_G.C_LootHistory.GetNumItems) == "function"
+  and type(_G.C_LootHistory.GetItem) == "function"
+  and type(_G.C_LootHistory.GetPlayerInfo) == "function"
+API.loothistoryevents = API.loothistory and API.eventutils
+  and _G.C_EventUtils.IsEventValid("LOOT_HISTORY_ROLL_CHANGED")
+  and _G.C_EventUtils.IsEventValid("LOOT_HISTORY_ROLL_COMPLETE")
+  and _G.C_EventUtils.IsEventValid("LOOT_HISTORY_FULL_UPDATE")
+API.lootrollitemid = type(_G.GetLootRollItemID) == "function"
 
 API.overridebindings = type(_G.SetOverrideBindingClick) == "function"
   and type(_G.ClearOverrideBindings) == "function"
@@ -435,6 +448,12 @@ API.GetItemInfo = function(item)
   return _G.GetItemInfo(item)
 end
 
+API.GetItemInfoInstant = function(item)
+  if API.iteminfoinstant and item then
+    return _G.C_Item.GetItemInfoInstant(item)
+  end
+end
+
 API.GetItemNameByID = function(itemID)
   if not itemID then return end
   if API.itemname then
@@ -514,6 +533,25 @@ end
 API.GetBuybackItemID = function(index)
   if API.buybackitemid and index then
     return _G.C_MerchantFrame.GetBuybackItemID(index)
+  end
+end
+
+API.GetLootHistoryNumItems = function()
+  if API.loothistory then
+    return _G.C_LootHistory.GetNumItems()
+  end
+  return 0
+end
+
+API.GetLootHistoryItem = function(index)
+  if API.loothistory and index then
+    return _G.C_LootHistory.GetItem(index)
+  end
+end
+
+API.GetLootHistoryPlayerInfo = function(itemIndex, playerIndex)
+  if API.loothistory and itemIndex and playerIndex then
+    return _G.C_LootHistory.GetPlayerInfo(itemIndex, playerIndex)
   end
 end
 
