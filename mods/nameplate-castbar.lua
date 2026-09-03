@@ -61,6 +61,49 @@ module.enable = function(self)
   local platesByUnit = {}
   local useClassicNameplateTokens = false
 
+  local function GetCastbarWidth(plate)
+    if not plate then return end
+
+    -- Match the visible healthbar, not the outer nameplate frame. Nameplate
+    -- Scale reparents/scales the healthbar, so convert its width back into the
+    -- plate's coordinate space using effective scales.
+    local healthbar = plate.healthbar
+    if not healthbar or not healthbar.GetWidth then
+      healthbar = plate:GetChildren()
+    end
+
+    if healthbar and healthbar.GetWidth then
+      local width = healthbar:GetWidth()
+      local healthScale = healthbar.GetEffectiveScale and healthbar:GetEffectiveScale()
+      local plateScale = plate.GetEffectiveScale and plate:GetEffectiveScale()
+
+      if width and width > 0 and healthScale and healthScale > 0
+        and plateScale and plateScale > 0
+      then
+        width = width * healthScale / plateScale
+        if width > 0 then return width end
+      elseif width and width > 0 then
+        return width
+      end
+    end
+
+    -- Defensive fallback matching the historical ShaguTweaks layout.
+    local width = plate:GetWidth()
+    return width and width > 22 and width - 22 or nil
+  end
+
+  local function SyncCastbarWidth(plate)
+    if not plate or not plate.castbar then return end
+
+    local width = GetCastbarWidth(plate)
+    if not width then return end
+
+    local current = plate.castbar:GetWidth()
+    if not current or math.abs(current - width) > .5 then
+      plate.castbar:SetWidth(width)
+    end
+  end
+
   local function create_castbar(plate)
     if not plate or plate.castbar then return end
 
@@ -68,7 +111,7 @@ module.enable = function(self)
     plate.castbar:SetPoint("BOTTOM", plate, "BOTTOM", 8, -11)
     plate.castbar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     plate.castbar:SetStatusBarColor(1, .8, 0, 1)
-    plate.castbar:SetWidth(plate:GetWidth() - 22)
+    plate.castbar:SetWidth(GetCastbarWidth(plate) or 100)
     plate.castbar:SetHeight(10)
     plate.castbar.ownerPlate = plate
 
@@ -213,6 +256,12 @@ module.enable = function(self)
     end
 
     local bar = plate.castbar
+
+    -- NAME_PLATE_UNIT_ADDED can arrive before other visual modules finish
+    -- sizing the plate. Re-read the final healthbar width when a cast is
+    -- actually shown instead of keeping the early creation width.
+    SyncCastbarWidth(plate)
+
     bar.startTime = startTime / 1000
     bar.endTime = endTime / 1000
     bar.isChannel = isChannel
