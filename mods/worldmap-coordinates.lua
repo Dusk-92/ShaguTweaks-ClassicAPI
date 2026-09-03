@@ -1,5 +1,6 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
+local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["WorldMap Coordinates"],
@@ -42,6 +43,8 @@ module.enable = function(self)
       WorldMapButton.player.text:SetJustifyH("RIGHT")
 
       WorldMapButton.coords.elapsed = 0
+      WorldMapButton.coords.lastCursorText = nil
+      WorldMapButton.coords.lastPlayerText = nil
       WorldMapButton.coords:SetScript("OnUpdate", function()
         -- Coordinates do not need a full render-frame refresh. 10 Hz keeps the
         -- display responsive while avoiding repeated map/cursor queries and
@@ -50,28 +53,44 @@ module.enable = function(self)
         if this.elapsed < .1 then return end
         this.elapsed = 0
 
-        local width  = WorldMapButton:GetWidth()
-        local height = WorldMapButton:GetHeight()
-        local mx, my = WorldMapButton:GetCenter()
-        local scale  = WorldMapButton:GetEffectiveScale()
-        local x, y   = GetCursorPosition()
+        local cursorText
+        if API and API.regionmouseover and API.IsMouseOver(WorldMapButton) then
+          local width  = WorldMapButton:GetWidth()
+          local height = WorldMapButton:GetHeight()
+          local mx, my = WorldMapButton:GetCenter()
+          local scale  = WorldMapButton:GetEffectiveScale()
+          local x, y   = GetCursorPosition()
 
-        if mx and my then
-          mx = (( x / scale ) - ( mx - width / 2)) / width * 100
-          my = (( my + height / 2 ) - ( y / scale )) / height * 100
+          if mx and my then
+            mx = (( x / scale ) - ( mx - width / 2)) / width * 100
+            my = (( my + height / 2 ) - ( y / scale )) / height * 100
+          end
+
+          if mx and my then
+            cursorText = string.format("|cffffcc00" .. T["Cursor"] .. ": |r%.1f / %.1f", mx, my)
+          end
+        end
+
+        if not cursorText then
+          cursorText = "|cffffcc00" .. T["Cursor"] .. ": |r" .. T["N/A"]
+        end
+
+        if this.lastCursorText ~= cursorText then
+          this.lastCursorText = cursorText
+          WorldMapButton.coords.text:SetText(cursorText)
         end
 
         local px, py = GetPlayerMapPosition("player")
+        local playerText
         if px > 0 and py > 0 then
-          WorldMapButton.player.text:SetText(string.format("|cffffcc00" .. T["Player"] .. ": |r%.1f / %.1f", px*100, py*100))
+          playerText = string.format("|cffffcc00" .. T["Player"] .. ": |r%.1f / %.1f", px*100, py*100)
         else
-          WorldMapButton.player.text:SetText(string.format("|cffffcc00" .. T["Player"] .. ": |r" .. T["N/A"]))
+          playerText = "|cffffcc00" .. T["Player"] .. ": |r" .. T["N/A"]
         end
 
-        if mx and my and MouseIsOver(WorldMapButton) then
-          WorldMapButton.coords.text:SetText(string.format("|cffffcc00" .. T["Cursor"] .. ": |r%.1f / %.1f", mx, my))
-        else
-          WorldMapButton.coords.text:SetText(string.format("|cffffcc00" .. T["Cursor"] .. ": |r" .. T["N/A"]))
+        if this.lastPlayerText ~= playerText then
+          this.lastPlayerText = playerText
+          WorldMapButton.player.text:SetText(playerText)
         end
       end)
     end
