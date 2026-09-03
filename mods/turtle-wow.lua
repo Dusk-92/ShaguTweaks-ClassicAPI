@@ -72,9 +72,8 @@ module.enable = function(self)
   -- trigger once to avoid graphical glitches
   WorldMapFrame_Maximize()
 
-  -- Vendor Values already owns the fallback sell-price database in this fork.
-  -- ClassicAPI is queried first there, so keep a single static database instead
-  -- of allocating a second Turtle-specific copy during addon load.
+  -- Vendor Values exposes a lazy ClassicAPI-backed SellValueDB compatibility
+  -- table, so do not allocate a second Turtle-specific static price database.
 
   -- add druids tree of life and fast travel form to autoshift
   if ShaguTweaks.dismount then
