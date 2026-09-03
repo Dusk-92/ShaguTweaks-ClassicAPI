@@ -1,3 +1,5 @@
+local _G = ShaguTweaks.GetGlobalEnv()
+local API = ShaguTweaks.API
 local GetExpansion = ShaguTweaks.GetExpansion
 
 local NAMEPLATE_OBJECTORDER = { "border", "glow", "name", "level", "levelicon", "raidicon" }
@@ -20,8 +22,7 @@ local function IsNamePlate(frame)
 end
 
 local registry = {}
-local initialized = 0
-local parentcount, childs, plate
+local lastParentCount = -1
 local libnameplate = CreateFrame("Frame", nil, UIParent)
 ShaguTweaks.libnameplate = libnameplate
 libnameplate.OnInit = {}
@@ -32,54 +33,87 @@ local onInit = libnameplate.OnInit
 local onShow = libnameplate.OnShow
 local onUpdate = libnameplate.OnUpdate
 
-local function ScanNameplates()
-  parentcount = WorldFrame:GetNumChildren()
-  if initialized < parentcount then
-    childs = { WorldFrame:GetChildren() }
-    for i = initialized + 1, parentcount do
-      plate = childs[i]
+local function InitializePlate(plate)
+  if not plate or registry[plate] or not IsNamePlate(plate) then return nil end
 
-      if IsNamePlate(plate) and not registry[plate] then
-        plate.healthbar = plate:GetChildren()
+  plate.healthbar = plate:GetChildren()
 
-        local regions = { plate:GetRegions() }
-        for index = 1, table.getn(regions) do
-          local key = NAMEPLATE_OBJECTORDER[index]
-          if key then
-            plate[key] = regions[index]
-          end
-        end
-
-        -- Callback lists are arrays populated with table.insert(). Iterate them
-        -- numerically: OnUpdate runs once per rendered frame on every visible
-        -- nameplate, so avoid the generic pairs() iterator in this hot path.
-        for index = 1, table.getn(onInit) do
-          onInit[index](plate)
-        end
-
-        -- Preserve the native/addon scripts and append ShaguTweaks callbacks.
-        local oldUpdate = plate:GetScript("OnUpdate")
-        plate:SetScript("OnUpdate", function(self, elapsed)
-          if oldUpdate then oldUpdate(self, elapsed) end
-          for index = 1, table.getn(onUpdate) do
-            onUpdate[index](self, elapsed)
-          end
-        end)
-
-        local oldShow = plate:GetScript("OnShow")
-        plate:SetScript("OnShow", function(self)
-          if oldShow then oldShow(self) end
-          for index = 1, table.getn(onShow) do
-            onShow[index](self)
-          end
-        end)
-
-        registry[plate] = true
-      end
+  local regions = { plate:GetRegions() }
+  for index = 1, table.getn(regions) do
+    local key = NAMEPLATE_OBJECTORDER[index]
+    if key then
+      plate[key] = regions[index]
     end
-
-    initialized = parentcount
   end
+
+  for index = 1, table.getn(onInit) do
+    onInit[index](plate)
+  end
+
+  -- Preserve the native/addon scripts and append ShaguTweaks callbacks.
+  local oldUpdate = plate:GetScript("OnUpdate")
+  plate:SetScript("OnUpdate", function(self, elapsed)
+    if oldUpdate then oldUpdate(self, elapsed) end
+    for index = 1, table.getn(onUpdate) do
+      onUpdate[index](self, elapsed)
+    end
+  end)
+
+  local oldShow = plate:GetScript("OnShow")
+  plate:SetScript("OnShow", function(self)
+    if oldShow then oldShow(self) end
+    for index = 1, table.getn(onShow) do
+      onShow[index](self)
+    end
+  end)
+
+  registry[plate] = true
+  return true
+end
+
+-- Event-driven discovery still obtains the real native frame through
+-- WorldFrame:GetChildren(). ClassicAPI's C_NamePlate getters can return fresh
+-- wrapper tables for default engine plates, so caching those wrappers would be
+-- unsafe. The NAME_PLATE_UNIT_ADDED event is used only as a precise wake-up.
+local function DiscoverNameplates()
+  local count = WorldFrame:GetNumChildren()
+  local children = { WorldFrame:GetChildren() }
+  local added = 0
+
+  for index = 1, count do
+    if InitializePlate(children[index]) then
+      added = added + 1
+    end
+  end
+
+  lastParentCount = count
+  return added
+end
+
+-- Older ClassicAPI builds without nameplate events retain the historical
+-- polling fallback. Only enumerate children when the WorldFrame child count
+-- changes; registry checks keep repeated frames idempotent.
+local function ScanNameplatesLegacy()
+  local count = WorldFrame:GetNumChildren()
+  if count == lastParentCount then return end
+  DiscoverNameplates()
+end
+
+local eventDriver = CreateFrame("Frame")
+local retryDriver = CreateFrame("Frame")
+retryDriver:SetScript("OnUpdate", nil)
+
+local function ScheduleDiscoveryRetry()
+  if retryDriver:GetScript("OnUpdate") then return end
+  retryDriver:SetScript("OnUpdate", function()
+    DiscoverNameplates()
+    this:SetScript("OnUpdate", nil)
+  end)
+end
+
+local function HasClassicNameplateEvents()
+  return API and API.nameplates and API.eventutils and _G.C_EventUtils
+    and _G.C_EventUtils.IsEventValid("NAME_PLATE_UNIT_ADDED")
 end
 
 function libnameplate:HasConsumers()
@@ -91,7 +125,24 @@ end
 function libnameplate:Enable()
   if self.enabled then return end
   self.enabled = true
-  self:SetScript("OnUpdate", ScanNameplates)
+
+  if HasClassicNameplateEvents() then
+    -- Discover plates that were already visible when a consumer was enabled.
+    DiscoverNameplates()
+
+    eventDriver:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+    eventDriver:SetScript("OnEvent", function()
+      -- In current ClassicAPI the nameplate normally exists by event dispatch
+      -- time. Scan immediately, then do one next-frame retry to tolerate engine
+      -- ordering differences without leaving a permanent OnUpdate running.
+      DiscoverNameplates()
+      ScheduleDiscoveryRetry()
+    end)
+
+    self:SetScript("OnUpdate", nil)
+  else
+    self:SetScript("OnUpdate", ScanNameplatesLegacy)
+  end
 end
 
 function libnameplate:EnableIfNeeded()
