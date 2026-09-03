@@ -176,14 +176,23 @@ local classicRemoteEvents = API and API.casts and API.eventutils
   and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_CHANNEL_STOP")
 
 if classicRemoteEvents then
-  libcast:RegisterEvent("UNIT_SPELLCAST_START")
-  libcast:RegisterEvent("UNIT_SPELLCAST_STOP")
-  libcast:RegisterEvent("UNIT_SPELLCAST_FAILED")
-  libcast:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-  libcast:RegisterEvent("UNIT_SPELLCAST_DELAYED")
-  libcast:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
-  libcast:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
-  libcast:RegisterEvent("UNIT_SPELLCAST_CHANNEL_UPDATE")
+  local remoteEvents = {
+    "UNIT_SPELLCAST_START",
+    "UNIT_SPELLCAST_STOP",
+    "UNIT_SPELLCAST_FAILED",
+    "UNIT_SPELLCAST_INTERRUPTED",
+    "UNIT_SPELLCAST_DELAYED",
+    "UNIT_SPELLCAST_CHANNEL_START",
+    "UNIT_SPELLCAST_CHANNEL_STOP",
+    "UNIT_SPELLCAST_CHANNEL_UPDATE",
+  }
+
+  for index = 1, table.getn(remoteEvents) do
+    local eventName = remoteEvents[index]
+    if _G.C_EventUtils.IsEventValid(eventName) then
+      libcast:RegisterEvent(eventName)
+    end
+  end
 else
   libcast:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
   libcast:RegisterEvent("CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE")
