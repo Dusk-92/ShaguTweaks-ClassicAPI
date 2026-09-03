@@ -1,8 +1,8 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
 local GetExpansion = ShaguTweaks.GetExpansion
-local GetItemLinkByName = ShaguTweaks.GetItemLinkByName
 local GetItemIDFromLink = ShaguTweaks.GetItemIDFromLink
+local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["Vendor Values"],
@@ -3303,29 +3303,57 @@ ShaguTweaks.SellValueDB = data
 local function GetVendorPrice(id)
   if not id then return end
 
-  -- ClassicAPI reads m_sellPrice directly from the live item cache. This is
-  -- preferable on Turtle WoW because custom items are not always reliable when
-  -- their ID has to be recovered by parsing a legacy item link.
-  if C_Item and C_Item.GetItemSellPriceByID then
-    local price = C_Item.GetItemSellPriceByID(id)
-    if price ~= nil then
-      return price
-    end
+  -- ClassicAPI is authoritative when the item is cached. Its getter warms an
+  -- uncached item in the background, so a later GET_ITEM_INFO_RECEIVED can
+  -- refresh the currently visible tooltip without any permanent polling.
+  local price = API and API.GetItemSellPriceByID
+    and API.GetItemSellPriceByID(id)
+  if price ~= nil then
+    return price
   end
 
+  -- Keep the generated Turtle/Vanilla database as an immediate compatibility
+  -- fallback. It also covers older ClassicAPI builds and uncached custom items.
   return ShaguTweaks.SellValueDB and ShaguTweaks.SellValueDB[id]
 end
 
+local pendingTooltip, pendingItemID, pendingCount, pendingIgnoreMerchant
+
+local function ClearPending(frame)
+  if not frame or pendingTooltip == frame then
+    pendingTooltip, pendingItemID, pendingCount, pendingIgnoreMerchant =
+      nil, nil, nil, nil
+  end
+end
+
 local function AddVendorPrices(frame, id, count, ignoreMerchant)
-  if not id then return end
-  if not ignoreMerchant and MerchantFrame:IsShown() then return end
+  if not frame or not id then return end
+  if not ignoreMerchant and MerchantFrame:IsShown() then
+    ClearPending(frame)
+    return
+  end
 
   local price = GetVendorPrice(id)
   count = math.max(tonumber(count) or 1, 1)
 
-  if price and price > 0 then
-    SetTooltipMoney(frame, price * count)
-    frame:Show()
+  if price ~= nil then
+    ClearPending(frame)
+    if price > 0 then
+      SetTooltipMoney(frame, price * count)
+      frame:Show()
+      return true
+    end
+    return
+  end
+
+  -- ClassicAPI returns nil for an uncached record and starts loading it.
+  -- Remember only one visible tooltip; the event handler below retries once
+  -- the exact item arrives.
+  if API and API.itemprice then
+    pendingTooltip = frame
+    pendingItemID = id
+    pendingCount = count
+    pendingIgnoreMerchant = ignoreMerchant
   end
 end
 
@@ -3334,225 +3362,235 @@ local function AddVendorPriceFromLink(frame, link, count, ignoreMerchant)
   AddVendorPrices(frame, GetItemIDFromLink(link), count, ignoreMerchant)
 end
 
-local function GetBagItemID(container, slot)
-  if C_Container and C_Container.GetContainerItemID then
-    local id = C_Container.GetContainerItemID(container, slot)
-    if id then return id end
-  end
-  return GetItemIDFromLink(GetContainerItemLink(container, slot))
-end
-
-local function GetInventoryID(unit, slot)
-  if GetInventoryItemID then
-    local id = GetInventoryItemID(unit, slot)
-    if id then return id end
-  end
-  return GetItemIDFromLink(GetInventoryItemLink(unit, slot))
-end
-
 module.enable = function(self)
-  -- Some native tooltip setters call SetHyperlink internally. Track nesting so
-  -- each item gets exactly one vendor-price line.
-  local setterDepth = 0
+  -- Refresh a tooltip whose ClassicAPI item record was still loading. This is
+  -- event-driven and completely dormant when no item price is pending.
+  if API and API.eventutils and _G.C_EventUtils
+    and _G.C_EventUtils.IsEventValid("GET_ITEM_INFO_RECEIVED") then
+    local priceEvents = CreateFrame("Frame")
+    priceEvents:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    priceEvents:SetScript("OnEvent", function()
+      if not pendingTooltip or not pendingItemID or arg1 ~= pendingItemID then
+        return
+      end
 
-  local HookSetHyperlink = GameTooltip.SetHyperlink
-  function GameTooltip.SetHyperlink(self, link)
-    local result = HookSetHyperlink(self, link)
-    if setterDepth == 0 then
-      AddVendorPriceFromLink(self, link, 1, true)
+      if not pendingTooltip:IsShown() then
+        ClearPending()
+        return
+      end
+
+      AddVendorPrices(
+        pendingTooltip, pendingItemID, pendingCount, pendingIgnoreMerchant)
+    end)
+  end
+
+  -- Every tooltip setter is described once here. Prefer ClassicAPI's direct
+  -- item IDs; link parsing remains only as a cold compatibility path inside
+  -- api.lua or for SetHyperlink/SetCraftSpell where a link is the natural API.
+  local fill = {
+    SetHyperlink = function(self, link)
+      return nil, 1, true, link
+    end,
+
+    SetBagItem = function(self, container, slot)
+      if container == -1 and BankButtonIDToInvSlotID then
+        local invSlot = BankButtonIDToInvSlotID(slot)
+        local itemID = invSlot and API.GetInventoryItemID("player", invSlot)
+        local count = invSlot and GetInventoryItemCount("player", invSlot)
+        return itemID, count, false
+      end
+
+      return API.GetContainerItemID(container, slot),
+        API.GetContainerItemStackCount(container, slot), false
+    end,
+
+    SetQuestLogItem = function(self, itemType, index)
+      return API.GetQuestLogItemID(itemType, index), 1, true
+    end,
+
+    SetQuestItem = function(self, itemType, index)
+      return API.GetQuestItemID(itemType, index), 1, true
+    end,
+
+    SetLootItem = function(self, slot)
+      return API.GetLootSlotItemID(slot), 1, true
+    end,
+
+    SetInboxItem = function(self, mailID, attachmentIndex)
+      local _, _, count = GetInboxItem(mailID, attachmentIndex)
+      return API.GetInboxItemID(mailID), count, true
+    end,
+
+    SetInventoryItem = function(self, unit, slot)
+      return API.GetInventoryItemID(unit, slot), 1, true
+    end,
+
+    SetLootRollItem = function(self, rollID)
+      return API.GetLootRollItemID(rollID), 1, true
+    end,
+
+    SetMerchantItem = function(self, merchantIndex)
+      return API.GetMerchantItemID(merchantIndex), 1, false
+    end,
+
+    SetCraftItem = function(self, skill, slot)
+      return API.GetCraftReagentItemID(skill, slot), 1, true
+    end,
+
+    SetCraftSpell = function(self, slot)
+      return nil, 1, true, GetCraftItemLink(slot)
+    end,
+
+    SetTradeSkillItem = function(self, skillIndex, reagentIndex)
+      if reagentIndex then
+        return API.GetTradeSkillReagentItemID(skillIndex, reagentIndex), 1, true
+      end
+      return API.GetTradeSkillItemID(skillIndex), 1, true
+    end,
+
+    SetAuctionItem = function(self, atype, index)
+      local _, _, count = GetAuctionItemInfo(atype, index)
+      return API.GetAuctionItemID(atype, index), count, true
+    end,
+
+    SetAuctionSellItem = function(self)
+      local _, _, count = GetAuctionSellItemInfo()
+      return API.GetAuctionSellItemID(), count, true
+    end,
+
+    SetTradePlayerItem = function(self, index)
+      return API.GetTradePlayerItemID(index), 1, true
+    end,
+
+    SetTradeTargetItem = function(self, index)
+      return API.GetTradeTargetItemID(index), 1, true
+    end,
+  }
+
+  local installed = {}
+  local fillDepth = 0
+  local context
+
+  local function Capture(prepare, frame, a1, a2, a3)
+    local itemID, count, ignoreMerchant, link = prepare(frame, a1, a2, a3)
+    context = context or {}
+
+    if itemID and not context.itemID then context.itemID = itemID end
+    if link and not context.link then context.link = link end
+    if context.count == nil and count ~= nil then context.count = count end
+    if context.ignoreMerchant == nil and ignoreMerchant ~= nil then
+      context.ignoreMerchant = ignoreMerchant
     end
-    return result
   end
 
-  local HookSetItemRef = SetItemRef
-  SetItemRef = function(link, text, button)
-    local itemID = GetItemIDFromLink(link)
-    local result = HookSetItemRef(link, text, button)
-    if not IsAltKeyDown() and not IsShiftKeyDown() and not IsControlKeyDown() and itemID then
-      AddVendorPrices(ItemRefTooltip, itemID, 1, true)
+  local function InstallTooltipHooks()
+    for method, prepare in pairs(fill) do
+      -- Lua 5.0 shares generic-for control variables between closures. Keep
+      -- body locals so each wrapper captures the correct method and callback.
+      local method = method
+      local prepare = prepare
+      local original = GameTooltip[method]
+
+      -- A load-on-demand bag/UI addon may replace a setter after ShaguTweaks
+      -- initialized. Wrap that new outer setter while keeping the old captured
+      -- call chain intact. fillDepth prevents duplicate vendor-price lines.
+      if type(original) == "function" and original ~= installed[method] then
+        local wrapper = function(frame, a1, a2, a3)
+          local outer = fillDepth == 0
+          if outer then context = {} end
+
+          -- If an outer virtual bag method cannot identify an item, allow a
+          -- nested real SetInventoryItem/SetHyperlink call to provide it.
+          if outer or (context and not context.itemID and not context.link) then
+            Capture(prepare, frame, a1, a2, a3)
+          end
+
+          fillDepth = fillDepth + 1
+          local ok, r1, r2, r3, r4 = pcall(original, frame, a1, a2, a3)
+          fillDepth = fillDepth - 1
+
+          if outer then
+            local captured = context
+            context = nil
+
+            if ok and captured then
+              if captured.itemID then
+                AddVendorPrices(frame, captured.itemID, captured.count,
+                  captured.ignoreMerchant)
+              elseif captured.link then
+                AddVendorPriceFromLink(frame, captured.link, captured.count,
+                  captured.ignoreMerchant)
+              end
+            end
+          end
+
+          if not ok then error(r1) end
+          return r1, r2, r3, r4
+        end
+
+        installed[method] = wrapper
+        GameTooltip[method] = wrapper
+      end
     end
-    return result
   end
 
-  local HookSetBagItem = GameTooltip.SetBagItem
-  function GameTooltip.SetBagItem(self, container, slot)
-    local itemID = GetBagItemID(container, slot)
-    local _, itemCount = GetContainerItemInfo(container, slot)
-    setterDepth = setterDepth + 1
-    local result = HookSetBagItem(self, container, slot)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, itemCount, false)
-    return result
-  end
+  -- SetItemRef is global rather than a GameTooltip method. Keep the same
+  -- late-replacement protection without introducing a second shared helper.
+  local installedItemRef
+  local itemRefDepth = 0
 
-  local HookSetQuestLogItem = GameTooltip.SetQuestLogItem
-  function GameTooltip.SetQuestLogItem(self, itemType, index)
-    local itemID
-    if GetQuestLogItemID then itemID = GetQuestLogItemID(itemType, index) end
-    if not itemID then itemID = GetItemIDFromLink(GetQuestLogItemLink(itemType, index)) end
-    setterDepth = setterDepth + 1
-    local result = HookSetQuestLogItem(self, itemType, index)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, true)
-    return result
-  end
+  local function InstallItemRefHook()
+    local original = _G.SetItemRef
+    if type(original) ~= "function" or original == installedItemRef then return end
 
-  local HookSetQuestItem = GameTooltip.SetQuestItem
-  function GameTooltip.SetQuestItem(self, itemType, index)
-    local itemID
-    if GetQuestItemID then itemID = GetQuestItemID(itemType, index) end
-    if not itemID then itemID = GetItemIDFromLink(GetQuestItemLink(itemType, index)) end
-    setterDepth = setterDepth + 1
-    local result = HookSetQuestItem(self, itemType, index)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, true)
-    return result
-  end
+    local wrapper = function(link, text, button)
+      local outer = itemRefDepth == 0
+      local itemID = outer and GetItemIDFromLink(link) or nil
 
-  local HookSetLootItem = GameTooltip.SetLootItem
-  function GameTooltip.SetLootItem(self, slot)
-    local itemID
-    if GetLootSlotItemID then itemID = GetLootSlotItemID(slot) end
-    if not itemID then itemID = GetItemIDFromLink(GetLootSlotLink(slot)) end
-    setterDepth = setterDepth + 1
-    local result = HookSetLootItem(self, slot)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, true)
-    return result
-  end
+      itemRefDepth = itemRefDepth + 1
+      local ok, r1, r2, r3, r4 = pcall(original, link, text, button)
+      itemRefDepth = itemRefDepth - 1
 
-  local HookSetInboxItem = GameTooltip.SetInboxItem
-  function GameTooltip.SetInboxItem(self, mailID, attachmentIndex)
-    local _, _, itemCount = GetInboxItem(mailID, attachmentIndex)
-    local itemID
-    if GetInboxItemID then itemID = GetInboxItemID(mailID) end
-    setterDepth = setterDepth + 1
-    local result = HookSetInboxItem(self, mailID, attachmentIndex)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, itemCount, true)
-    return result
-  end
+      if ok and outer and itemID
+        and not API.IsAltKeyDown()
+        and not API.IsShiftKeyDown()
+        and not API.IsControlKeyDown() then
+        AddVendorPrices(ItemRefTooltip, itemID, 1, true)
+      end
 
-  local HookSetInventoryItem = GameTooltip.SetInventoryItem
-  function GameTooltip.SetInventoryItem(self, unit, slot)
-    local itemID = GetInventoryID(unit, slot)
-    setterDepth = setterDepth + 1
-    local result = HookSetInventoryItem(self, unit, slot)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, true)
-    return result
-  end
-
-  local HookSetLootRollItem = GameTooltip.SetLootRollItem
-  function GameTooltip.SetLootRollItem(self, id)
-    local itemID
-    if GetLootRollItemID then itemID = GetLootRollItemID(id) end
-    if not itemID then itemID = GetItemIDFromLink(GetLootRollItemLink(id)) end
-    setterDepth = setterDepth + 1
-    local result = HookSetLootRollItem(self, id)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, true)
-    return result
-  end
-
-  local HookSetMerchantItem = GameTooltip.SetMerchantItem
-  function GameTooltip.SetMerchantItem(self, merchantIndex)
-    local itemID
-    if GetMerchantItemID then itemID = GetMerchantItemID(merchantIndex) end
-    if not itemID then itemID = GetItemIDFromLink(GetMerchantItemLink(merchantIndex)) end
-    setterDepth = setterDepth + 1
-    local result = HookSetMerchantItem(self, merchantIndex)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, false)
-    return result
-  end
-
-  local HookSetCraftItem = GameTooltip.SetCraftItem
-  function GameTooltip.SetCraftItem(self, skill, slot)
-    local itemID
-    if GetCraftReagentItemID then itemID = GetCraftReagentItemID(skill, slot) end
-    if not itemID then itemID = GetItemIDFromLink(GetCraftReagentItemLink(skill, slot)) end
-    setterDepth = setterDepth + 1
-    local result = HookSetCraftItem(self, skill, slot)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, true)
-    return result
-  end
-
-  local HookSetCraftSpell = GameTooltip.SetCraftSpell
-  function GameTooltip.SetCraftSpell(self, slot)
-    local itemLink = GetCraftItemLink(slot)
-    setterDepth = setterDepth + 1
-    local result = HookSetCraftSpell(self, slot)
-    setterDepth = setterDepth - 1
-    AddVendorPriceFromLink(self, itemLink, 1, true)
-    return result
-  end
-
-  local HookSetTradeSkillItem = GameTooltip.SetTradeSkillItem
-  function GameTooltip.SetTradeSkillItem(self, skillIndex, reagentIndex)
-    local itemID
-    if reagentIndex then
-      if GetTradeSkillReagentItemID then itemID = GetTradeSkillReagentItemID(skillIndex, reagentIndex) end
-      if not itemID then itemID = GetItemIDFromLink(GetTradeSkillReagentItemLink(skillIndex, reagentIndex)) end
-    else
-      if GetTradeSkillItemID then itemID = GetTradeSkillItemID(skillIndex) end
-      if not itemID then itemID = GetItemIDFromLink(GetTradeSkillItemLink(skillIndex)) end
+      if not ok then error(r1) end
+      return r1, r2, r3, r4
     end
 
-    setterDepth = setterDepth + 1
-    local result = HookSetTradeSkillItem(self, skillIndex, reagentIndex)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, true)
-    return result
+    installedItemRef = wrapper
+    _G.SetItemRef = wrapper
   end
 
-  local HookSetAuctionItem = GameTooltip.SetAuctionItem
-  function GameTooltip.SetAuctionItem(self, atype, index)
-    local _, _, itemCount = GetAuctionItemInfo(atype, index)
-    local itemID
-    if GetAuctionItemID then itemID = GetAuctionItemID(atype, index) end
-    if not itemID then itemID = GetItemIDFromLink(GetAuctionItemLink(atype, index)) end
-    setterDepth = setterDepth + 1
-    local result = HookSetAuctionItem(self, atype, index)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, itemCount, true)
-    return result
+  InstallTooltipHooks()
+  InstallItemRefHook()
+
+  -- Re-check after load-on-demand UI addons install their own tooltip wrappers.
+  -- The one-shot next-frame pass handles event registration order without a
+  -- permanent OnUpdate.
+  local hookwatch = CreateFrame("Frame")
+  local rehook = CreateFrame("Frame")
+  rehook:SetScript("OnUpdate", nil)
+
+  local function ScheduleRehook()
+    if rehook:GetScript("OnUpdate") then return end
+    rehook:SetScript("OnUpdate", function()
+      this:SetScript("OnUpdate", nil)
+      InstallTooltipHooks()
+      InstallItemRefHook()
+    end)
   end
 
-  local HookSetAuctionSellItem = GameTooltip.SetAuctionSellItem
-  function GameTooltip.SetAuctionSellItem(self)
-    local _, _, itemCount = GetAuctionSellItemInfo()
-    local itemID
-    if GetAuctionSellItemID then itemID = GetAuctionSellItemID() end
-    setterDepth = setterDepth + 1
-    local result = HookSetAuctionSellItem(self)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, itemCount, true)
-    return result
-  end
-
-  local HookSetTradePlayerItem = GameTooltip.SetTradePlayerItem
-  function GameTooltip.SetTradePlayerItem(self, index)
-    local itemID
-    if GetTradePlayerItemID then itemID = GetTradePlayerItemID(index) end
-    if not itemID then itemID = GetItemIDFromLink(GetTradePlayerItemLink(index)) end
-    setterDepth = setterDepth + 1
-    local result = HookSetTradePlayerItem(self, index)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, true)
-    return result
-  end
-
-  local HookSetTradeTargetItem = GameTooltip.SetTradeTargetItem
-  function GameTooltip.SetTradeTargetItem(self, index)
-    local itemID
-    if GetTradeTargetItemID then itemID = GetTradeTargetItemID(index) end
-    if not itemID then itemID = GetItemIDFromLink(GetTradeTargetItemLink(index)) end
-    setterDepth = setterDepth + 1
-    local result = HookSetTradeTargetItem(self, index)
-    setterDepth = setterDepth - 1
-    AddVendorPrices(self, itemID, 1, true)
-    return result
-  end
+  hookwatch:RegisterEvent("ADDON_LOADED")
+  hookwatch:RegisterEvent("PLAYER_LOGIN")
+  hookwatch:RegisterEvent("PLAYER_ENTERING_WORLD")
+  hookwatch:SetScript("OnEvent", function()
+    InstallTooltipHooks()
+    InstallItemRefHook()
+    ScheduleRehook()
+  end)
 end
