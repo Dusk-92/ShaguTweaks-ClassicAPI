@@ -431,10 +431,9 @@ module.enable = function(self)
     frame:Show()
     ShaguTweaks.roll.timer:Show()
 
-    -- If ClassicAPI already has the matching history row (for example after
-    -- another addon reopens the frame), bind immediately. Normal START_ROLL
-    -- ordering binds a moment later on LOOT_HISTORY_FULL_UPDATE.
-    BindVisibleFrames()
+    -- ClassicAPI records the new history row after the native START_ROLL
+    -- handler returns. Binding happens on the ensuing FULL_UPDATE; doing it
+    -- here could accidentally attach a repeated item to an older history row.
   end
 
   for i=1,ROLL_FRAME_COUNT do
