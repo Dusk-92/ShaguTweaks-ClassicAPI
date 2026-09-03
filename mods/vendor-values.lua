@@ -3312,9 +3312,9 @@ local function GetVendorPrice(id)
     return price
   end
 
-  -- Keep the generated Turtle/Vanilla database as an immediate compatibility
-  -- fallback. It also covers older ClassicAPI builds and uncached custom items.
-  return ShaguTweaks.SellValueDB and ShaguTweaks.SellValueDB[id]
+  -- TEMP TEST: deliberately disable SellValueDB fallback so runtime testing
+  -- proves that the displayed price came from ClassicAPI itself.
+  return nil
 end
 
 local function AddVendorPrices(frame, id, count, ignoreMerchant)
