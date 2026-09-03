@@ -111,11 +111,33 @@ function libspell.GetSpellInfo(index, bookType)
   local cache = spellinfo[cacheKey]
   if cache then return cache[1], cache[2], cache[3], cache[4], cache[5], cache[6] end
 
-  local name, rank, id
-  local icon = ""
-  local castingTime = 0
-  local minRange = 0
-  local maxRange = 0
+  -- ClassicAPI resolves spell IDs, spellbook slots, spell names and explicit
+  -- ranks directly in native code. Use that first so normal casts never walk
+  -- the Lua spellbook or build a hidden tooltip.
+  local name, rank, icon, _, _, _, castingTime, minRange, maxRange =
+    API.GetSpellInfo(index, bookType)
+
+  if name then
+    spellinfo[cacheKey] = {
+      name,
+      rank or "",
+      icon or "",
+      castingTime or 0,
+      minRange or 0,
+      maxRange or 0,
+    }
+    return name, rank or "", icon or "", castingTime or 0,
+      minRange or 0, maxRange or 0
+  end
+
+  -- Defensive compatibility path for an older ClassicAPI build that does not
+  -- expose the direct GetSpellInfo resolver. This path stays cold on current
+  -- ClassicAPI and preserves the historical ShaguTweaks behavior.
+  local id
+  icon = ""
+  castingTime = 0
+  minRange = 0
+  maxRange = 0
 
   if type(index) == "string" then
     local _, _, sname, srank = string.find(index, '(.+)%((.+)%)')
@@ -128,35 +150,21 @@ function libspell.GetSpellInfo(index, bookType)
   end
 
   if id then
-    -- ClassicAPI's GetSpellInfo(slot, bookType) reads Spell.dbc,
-    -- SpellCastTimes.dbc and SpellRange.dbc directly. This avoids localized
-    -- tooltip parsing and gives exact millisecond/range values.
-    local apiName, apiRank, apiIcon, _, _, _, apiCastTime, apiMinRange, apiMaxRange = API.GetSpellInfo(id, bookType)
-    if apiName then
-      name = apiName
-      rank = apiRank or rank
-      icon = apiIcon or ""
-      castingTime = apiCastTime or 0
-      minRange = apiMinRange or 0
-      maxRange = apiMaxRange or 0
-    else
-      -- Legacy fallback for an outdated/missing ClassicAPI spell-info surface.
-      icon = GetSpellTexture(id, bookType) or ""
-      local tip = GetScanner()
-      tip:SetSpell(id, bookType)
-      local _, sec = tip:Find(gsub(SPELL_CAST_TIME_SEC, "%%.3g", "%(.+%)"))
-      local _, min = tip:Find(gsub(SPELL_CAST_TIME_MIN, "%%.3g", "%(.+%)"))
-      local _, range = tip:Find(gsub(SPELL_RANGE, "%%s", "%(.+%)"))
-      castingTime = (tonumber(sec) or tonumber(min) or 0) * 1000
-      if range then
-        local _, _, low, high = string.find(range, "(.+)-(.+)")
-        if low and high then
-          minRange = tonumber(low)
-          maxRange = tonumber(high)
-        else
-          minRange = 0
-          maxRange = tonumber(range)
-        end
+    icon = GetSpellTexture(id, bookType) or ""
+    local tip = GetScanner()
+    tip:SetSpell(id, bookType)
+    local _, sec = tip:Find(gsub(SPELL_CAST_TIME_SEC, "%%.3g", "%(.+%)"))
+    local _, min = tip:Find(gsub(SPELL_CAST_TIME_MIN, "%%.3g", "%(.+%)"))
+    local _, range = tip:Find(gsub(SPELL_RANGE, "%%s", "%(.+%)"))
+    castingTime = (tonumber(sec) or tonumber(min) or 0) * 1000
+    if range then
+      local _, _, low, high = string.find(range, "(.+)-(.+)")
+      if low and high then
+        minRange = tonumber(low)
+        maxRange = tonumber(high)
+      else
+        minRange = 0
+        maxRange = tonumber(range)
       end
     end
   end
