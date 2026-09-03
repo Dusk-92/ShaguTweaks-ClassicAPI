@@ -42,6 +42,12 @@ module.enable = function(self)
       WorldMapButton.player.text:SetTextColor(1, 1, 1)
       WorldMapButton.player.text:SetJustifyH("RIGHT")
 
+      local canMouseOver = API and API.regionmouseover
+      local cursorFormat = "|cffffcc00" .. T["Cursor"] .. ": |r%.1f / %.1f"
+      local playerFormat = "|cffffcc00" .. T["Player"] .. ": |r%.1f / %.1f"
+      local cursorNA = "|cffffcc00" .. T["Cursor"] .. ": |r" .. T["N/A"]
+      local playerNA = "|cffffcc00" .. T["Player"] .. ": |r" .. T["N/A"]
+
       WorldMapButton.coords.elapsed = 0
       WorldMapButton.coords.lastCursorText = nil
       WorldMapButton.coords.lastPlayerText = nil
@@ -54,7 +60,7 @@ module.enable = function(self)
         this.elapsed = 0
 
         local cursorText
-        if API and API.regionmouseover and API.IsMouseOver(WorldMapButton) then
+        if canMouseOver and API.IsMouseOver(WorldMapButton) then
           local width  = WorldMapButton:GetWidth()
           local height = WorldMapButton:GetHeight()
           local mx, my = WorldMapButton:GetCenter()
@@ -67,12 +73,12 @@ module.enable = function(self)
           end
 
           if mx and my then
-            cursorText = string.format("|cffffcc00" .. T["Cursor"] .. ": |r%.1f / %.1f", mx, my)
+            cursorText = string.format(cursorFormat, mx, my)
           end
         end
 
         if not cursorText then
-          cursorText = "|cffffcc00" .. T["Cursor"] .. ": |r" .. T["N/A"]
+          cursorText = cursorNA
         end
 
         if this.lastCursorText ~= cursorText then
@@ -83,9 +89,9 @@ module.enable = function(self)
         local px, py = GetPlayerMapPosition("player")
         local playerText
         if px > 0 and py > 0 then
-          playerText = string.format("|cffffcc00" .. T["Player"] .. ": |r%.1f / %.1f", px*100, py*100)
+          playerText = string.format(playerFormat, px*100, py*100)
         else
-          playerText = "|cffffcc00" .. T["Player"] .. ": |r" .. T["N/A"]
+          playerText = playerNA
         end
 
         if this.lastPlayerText ~= playerText then
