@@ -43,15 +43,28 @@ end
 
 local libcast = CreateFrame("Frame", "ShaguTweaksEnemyCast")
 local player = UnitName("player")
+local _, playerClass = UnitClass("player")
+local useClassicCasts = API and API.casts
+local needsCustomHunter = useClassicCasts and playerClass == "HUNTER"
 
 ShaguTweaks.UnitChannelInfo = _G.UnitChannelInfo or function(unit)
-  -- convert to name if unitstring was given
+  -- ClassicAPI is authoritative for real unit tokens. Fall through to the
+  -- legacy database only for the player's custom Hunter cast emulation or for
+  -- name/GUID keys maintained for compatibility.
+  if valid_units[unit] and useClassicCasts then
+    local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill =
+      API.GetChannelInfo(unit)
+    if cast then
+      return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill
+    end
+    if unit ~= "player" then return end
+  end
+
   unit = valid_units[unit] and UnitName(unit) or unit
 
   local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill
   local db = libcast.db[unit]
 
-  -- clean legacy values
   if db and db.cast and db.start + db.casttime / 1000 > GetTime() then
     if not db.channel then return end
     cast = db.cast
@@ -62,7 +75,6 @@ ShaguTweaks.UnitChannelInfo = _G.UnitChannelInfo or function(unit)
     endTime = startTime + db.casttime
     isTradeSkill = nil
   elseif db then
-    -- remove cast action to the database
     db.cast = nil
     db.rank = nil
     db.start = nil
@@ -75,13 +87,20 @@ ShaguTweaks.UnitChannelInfo = _G.UnitChannelInfo or function(unit)
 end
 
 ShaguTweaks.UnitCastingInfo = _G.UnitCastingInfo or function(unit)
-  -- convert to name if unitstring was given
+  if valid_units[unit] and useClassicCasts then
+    local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill =
+      API.GetCastInfo(unit)
+    if cast then
+      return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill
+    end
+    if unit ~= "player" then return end
+  end
+
   unit = valid_units[unit] and UnitName(unit) or unit
 
   local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill
   local db = libcast.db[unit]
 
-  -- clean legacy values
   if db and db.cast and db.start + db.casttime / 1000 > GetTime() then
     if db.channel then return end
     cast = db.cast
@@ -92,7 +111,6 @@ ShaguTweaks.UnitCastingInfo = _G.UnitCastingInfo or function(unit)
     endTime = startTime + db.casttime
     isTradeSkill = nil
   elseif db then
-    -- remove cast action to the database
     db.cast = nil
     db.rank = nil
     db.start = nil
@@ -187,15 +205,23 @@ else
   libcast:RegisterEvent("CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF")
 end
 
--- player spells
-libcast:RegisterEvent("SPELLCAST_START")
-libcast:RegisterEvent("SPELLCAST_STOP")
-libcast:RegisterEvent("SPELLCAST_FAILED")
-libcast:RegisterEvent("SPELLCAST_INTERRUPTED")
-libcast:RegisterEvent("SPELLCAST_DELAYED")
-libcast:RegisterEvent("SPELLCAST_CHANNEL_START")
-libcast:RegisterEvent("SPELLCAST_CHANNEL_STOP")
-libcast:RegisterEvent("SPELLCAST_CHANNEL_UPDATE")
+-- Full legacy player tracking is only needed when ClassicAPI cast data is
+-- unavailable. On current ClassicAPI, only Hunters keep the stop/fail events
+-- required to end the Aimed Shot / Multi-Shot custom cast emulation.
+if not useClassicCasts then
+  libcast:RegisterEvent("SPELLCAST_START")
+  libcast:RegisterEvent("SPELLCAST_STOP")
+  libcast:RegisterEvent("SPELLCAST_FAILED")
+  libcast:RegisterEvent("SPELLCAST_INTERRUPTED")
+  libcast:RegisterEvent("SPELLCAST_DELAYED")
+  libcast:RegisterEvent("SPELLCAST_CHANNEL_START")
+  libcast:RegisterEvent("SPELLCAST_CHANNEL_STOP")
+  libcast:RegisterEvent("SPELLCAST_CHANNEL_UPDATE")
+elseif needsCustomHunter then
+  libcast:RegisterEvent("SPELLCAST_STOP")
+  libcast:RegisterEvent("SPELLCAST_FAILED")
+  libcast:RegisterEvent("SPELLCAST_INTERRUPTED")
+end
 
 local function ClearClassicRemote(unit)
   if not unit or unit == "player" then return end
@@ -468,11 +494,12 @@ end
 
 local function CastCustom(spell)
   local func = GetCustomCast(spell)
-  if func and not ShaguTweaks.UnitCastingInfo(player) then
+  if func and not ShaguTweaks.UnitCastingInfo("player") then
     func(true)
   end
 end
 
+if not useClassicCasts or needsCustomHunter then
 hooksecurefunc("UseContainerItem", function(id, index)
   lastcasttex = GetContainerItemInfo(id, index)
 end)
@@ -543,5 +570,6 @@ hooksecurefunc("UseAction", function(slot, target, button)
   lastrank = rank
   CastCustom(spellName)
 end)
+end
 
 ShaguTweaks.libcast = libcast
