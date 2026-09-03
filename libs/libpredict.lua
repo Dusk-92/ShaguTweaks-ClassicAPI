@@ -420,7 +420,8 @@ libpredict.sender:SetScript("OnEvent", function()
     if arg1 ~= "player" then return end
     -- ClassicAPI follows the modern event shape: unit, target, castGUID,
     -- spellID, spellName, rank. TBC's legacy shape stores target in arg4.
-    senttarget = GetExpansion() == "vanilla" and arg2 or arg4
+    local castTarget = GetExpansion() == "vanilla" and arg2 or arg4
+    senttarget = castTarget and castTarget ~= "" and castTarget or nil
   elseif strfind(event, "SPELLCAST_START", 1) then
     local spell, time = arg1, arg2
 
