@@ -43,6 +43,15 @@ function libspell.GetSpellMaxRank(name)
   local cache = spellmaxrank[name]
   if cache then return cache[1], cache[2] end
 
+  -- ClassicAPI resolves a spell name to the highest known rank in native code.
+  local _, apiRank = API.GetSpellInfo(name)
+  if apiRank and apiRank ~= "" then
+    local _, _, numRank = string.find(apiRank, " (%d+)$")
+    local rankNumber = tonumber(numRank) or 0
+    spellmaxrank[name] = { apiRank, rankNumber }
+    return apiRank, rankNumber
+  end
+
   local rank = { 0, nil}
   for i = 1, GetNumSpellTabs() do
     local _, _, offset, num = GetSpellTabInfo(i)
@@ -71,8 +80,23 @@ end
 -- return:      [number],[string]   spell index and spellbook id
 function libspell.GetSpellIndex(name, rank)
   if not name then return end
-  local cache = spellindex[name..(rank or "")]
+  local cacheKey = name..(rank or "")
+  local cache = spellindex[cacheKey]
   if cache then return cache[1], cache[2] end
+
+  -- Resolve name/rank to a spellID in ClassicAPI, then use its native inverse
+  -- spellbook lookup. This avoids two nested Lua spellbook scans.
+  if type(_G.FindSpellBookSlotByID) == "function" then
+    local query = rank and (name .. "(" .. rank .. ")") or name
+    local _, _, _, _, _, _, _, _, _, spellID = API.GetSpellInfo(query)
+    if spellID then
+      local slot, bookType = _G.FindSpellBookSlotByID(spellID)
+      if slot then
+        spellindex[cacheKey] = { slot, bookType }
+        return slot, bookType
+      end
+    end
+  end
 
   if not rank then rank = libspell.GetSpellMaxRank(name) end
 
@@ -90,7 +114,7 @@ function libspell.GetSpellIndex(name, rank)
       end
     end
   end
-  spellindex[name..(rank or "")] = { nil }
+  spellindex[cacheKey] = { nil }
   return nil
 end
 
