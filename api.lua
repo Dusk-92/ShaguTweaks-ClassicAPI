@@ -50,6 +50,9 @@ API.containeritems = type(_G.C_Container) == "table"
 API.containeriteminfo = type(_G.C_Container) == "table"
   and type(_G.C_Container.GetContainerItemInfo) == "function"
 
+API.containeropenable = type(_G.C_Container) == "table"
+  and type(_G.C_Container.IsContainerItemOpenable) == "function"
+
 API.items = type(_G.C_Item) == "table"
 API.iteminfo = API.items and type(_G.C_Item.GetItemInfo) == "function"
 API.iteminfoinstant = API.items
@@ -118,6 +121,11 @@ API.loothistoryevents = API.loothistory and API.eventutils
   and _G.C_EventUtils.IsEventValid("LOOT_HISTORY_ROLL_COMPLETE")
   and _G.C_EventUtils.IsEventValid("LOOT_HISTORY_FULL_UPDATE")
 API.lootrollitemid = type(_G.GetLootRollItemID) == "function"
+
+API.aoeloot = type(_G.C_Loot) == "table"
+  and type(_G.C_Loot.GetNearbyLootableUnits) == "function"
+  and type(_G.C_Loot.IsScanInProgress) == "function"
+  and type(_G.C_Loot.LootAllCorpses) == "function"
 
 API.overridebindings = type(_G.SetOverrideBindingClick) == "function"
   and type(_G.ClearOverrideBindings) == "function"
@@ -378,6 +386,30 @@ API.GetContainerNumFreeSlots = function(bag)
     return _G.C_Container.GetContainerNumFreeSlots(bag)
   end
   return 0, 0
+end
+
+API.IsContainerItemOpenable = function(bag, slot)
+  if API.containeropenable then
+    return _G.C_Container.IsContainerItemOpenable(bag, slot)
+  end
+end
+
+API.GetNearbyLootableUnits = function()
+  if API.aoeloot then
+    return _G.C_Loot.GetNearbyLootableUnits()
+  end
+end
+
+API.IsLootScanInProgress = function()
+  return API.aoeloot and _G.C_Loot.IsScanInProgress() or false
+end
+
+API.LootAllCorpses = function(maxCount)
+  if API.aoeloot then
+    if maxCount then return _G.C_Loot.LootAllCorpses(maxCount) end
+    return _G.C_Loot.LootAllCorpses()
+  end
+  return false
 end
 
 -- ClassicAPI updates its own left/right modifier bitmap before firing
