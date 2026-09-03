@@ -20,6 +20,8 @@ for _, name in pairs(tocs) do
   end
 end
 
+local partyUnits = { "party1", "party2", "party3", "party4" }
+
 local function SetAllPointsOffset(frame, parent, offset)
   frame:SetPoint("TOPLEFT", parent, "TOPLEFT", offset, -offset)
   frame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -offset, offset)
@@ -83,9 +85,10 @@ local function UpdateWorldMapColors()
       end
 
       -- check if unit is in same party group
+      local unitName = UnitName(unitstr)
       ingroup = nil
       for i=1,4 do
-        if UnitName(string.format("party%d", i)) == UnitName(unitstr) then
+        if UnitName(partyUnits[i]) == unitName then
           ingroup = true
           break
         end
