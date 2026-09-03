@@ -1,5 +1,6 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local L = ShaguTweaks.L
+local API = ShaguTweaks.API
 local GetExpansion = ShaguTweaks.GetExpansion
 local libtipscan = ShaguTweaks.libtipscan
 local libspell = ShaguTweaks.libspell
@@ -334,7 +335,28 @@ end
 
 local function TrackUseAction(slot, target, selfcast)
   if not libpredict.sender.enabled then return end
+
+  -- Conditional macros are resolved by the later CastSpellByName hook. For a
+  -- direct spell action, ClassicAPI gives us the spellID without a tooltip.
+  if API and API.actioninfo and API.GetActionInfo then
+    local actionType, actionID = API.GetActionInfo(slot)
+    if actionType == "macro" or actionType == "item" then return end
+
+    if actionType == "spell" and actionID then
+      if not IsCurrentAction(slot) then return end
+      local effect, rank = API.GetSpellInfo(actionID)
+      if not effect then return end
+      spell_queue[1] = effect
+      spell_queue[2] = effect.. ( rank or "" )
+      spell_queue[3] = selfcast and UnitName("player") or UnitName("target") and UnitCanAssist("player", "target") and UnitName("target") or UnitName("player")
+      return
+    elseif actionType then
+      return
+    end
+  end
+
   if GetActionText(slot) or not IsCurrentAction(slot) then return end
+  scanner = scanner or libtipscan:GetScanner("prediction")
   scanner:SetAction(slot)
   local effect, rank = scanner:Line(1)
   if not effect then return end
@@ -345,7 +367,6 @@ end
 
 local function InstallSenderHooks()
   if hooksInstalled then return end
-  scanner = scanner or libtipscan:GetScanner("prediction")
   hooksecurefunc("CastSpell", TrackCastSpell)
   hooksecurefunc("CastSpellByName", TrackCastSpellByName)
   hooksecurefunc("UseAction", TrackUseAction)
@@ -395,16 +416,29 @@ libpredict.sender:SetScript("OnEvent", function()
     elseif spell and heal then
       if spell == spell_queue[1] then UpdateCache(spell_queue[2], heal) end
     end
-  elseif event == "UNIT_SPELLCAST_SENT" and arg4 then -- fix tbc mouseover macros
-      senttarget = arg4
+  elseif event == "UNIT_SPELLCAST_SENT" then
+    if arg1 ~= "player" then return end
+    -- ClassicAPI follows the modern event shape: unit, target, castGUID,
+    -- spellID, spellName, rank. TBC's legacy shape stores target in arg4.
+    senttarget = GetExpansion() == "vanilla" and arg2 or arg4
   elseif strfind(event, "SPELLCAST_START", 1) then
     local spell, time = arg1, arg2
 
-    if strfind(event, "UNIT_", 1) then -- tbc
+    if strfind(event, "UNIT_", 1) then
       if arg1 ~= "player" then return end
-      local spellname, _, _, _, starttime, endtime = UnitCastingInfo("player")
-      spell, time = spellname, endtime - starttime
+
+      if GetExpansion() == "vanilla" and API and API.casts then
+        local spellname, _, _, _, starttime, endtime = API.GetCastInfo("player")
+        spell = spellname
+        time = starttime and endtime and endtime - starttime or nil
+      else
+        local spellname, _, _, _, starttime, endtime = UnitCastingInfo("player")
+        spell = spellname
+        time = starttime and endtime and endtime - starttime or nil
+      end
     end
+
+    if not spell or not time then return end
 
     if spell_queue[1] == spell and cache[spell_queue[2]] then
       local sender = player
@@ -487,21 +521,42 @@ function libpredict:Enable()
   resetcache:RegisterEvent("SKILL_LINES_CHANGED")
   resetcache:RegisterEvent("UNIT_INVENTORY_CHANGED")
 
-  -- tbc
-  self.sender:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-  self.sender:RegisterEvent("UNIT_SPELLCAST_START")
-  self.sender:RegisterEvent("UNIT_SPELLCAST_STOP")
-  self.sender:RegisterEvent("UNIT_SPELLCAST_FAILED")
-  self.sender:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-  self.sender:RegisterEvent("UNIT_SPELLCAST_SENT")
+  if GetExpansion() == "vanilla" then
+    -- ClassicAPI supplies structured player spellcast events on 1.12. Use
+    -- those instead of registering both event families and processing each cast
+    -- twice. Keep the native SPELLCAST_DELAYED event because it carries the
+    -- exact delay delta consumed by HealDelay().
+    local useClassicCastEvents = API and API.eventutils and _G.C_EventUtils
+      and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_START")
+      and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_STOP")
+      and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_FAILED")
+      and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_INTERRUPTED")
+      and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_SENT")
 
-  -- vanilla
-  self.sender:RegisterEvent("CHAT_MSG_SPELL_SELF_BUFF")
-  self.sender:RegisterEvent("SPELLCAST_START")
-  self.sender:RegisterEvent("SPELLCAST_STOP")
-  self.sender:RegisterEvent("SPELLCAST_FAILED")
-  self.sender:RegisterEvent("SPELLCAST_INTERRUPTED")
-  self.sender:RegisterEvent("SPELLCAST_DELAYED")
+    if useClassicCastEvents then
+      self.sender:RegisterEvent("UNIT_SPELLCAST_START")
+      self.sender:RegisterEvent("UNIT_SPELLCAST_STOP")
+      self.sender:RegisterEvent("UNIT_SPELLCAST_FAILED")
+      self.sender:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+      self.sender:RegisterEvent("UNIT_SPELLCAST_SENT")
+    else
+      self.sender:RegisterEvent("SPELLCAST_START")
+      self.sender:RegisterEvent("SPELLCAST_STOP")
+      self.sender:RegisterEvent("SPELLCAST_FAILED")
+      self.sender:RegisterEvent("SPELLCAST_INTERRUPTED")
+    end
+
+    self.sender:RegisterEvent("SPELLCAST_DELAYED")
+    self.sender:RegisterEvent("CHAT_MSG_SPELL_SELF_BUFF")
+  else
+    -- Native TBC event layout and combat log.
+    self.sender:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    self.sender:RegisterEvent("UNIT_SPELLCAST_START")
+    self.sender:RegisterEvent("UNIT_SPELLCAST_STOP")
+    self.sender:RegisterEvent("UNIT_SPELLCAST_FAILED")
+    self.sender:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+    self.sender:RegisterEvent("UNIT_SPELLCAST_SENT")
+  end
 
   -- force cache updates
   self.sender:RegisterEvent("UNIT_INVENTORY_CHANGED")
