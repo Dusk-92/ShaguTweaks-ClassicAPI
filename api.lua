@@ -147,6 +147,10 @@ API.focus = type(_G.FocusUnit) == "function"
 API.chatidentity = type(_G.GetCurrentChatGUID) == "function"
   and type(_G.GetPlayerInfoByGUID) == "function"
 
+API.guildmembership = type(_G.UnitIsInMyGuild) == "function"
+API.friendmembership = type(_G.C_FriendList) == "table"
+  and type(_G.C_FriendList.IsFriend) == "function"
+
 API.playercache = type(_G.C_PlayerCache) == "table"
   and type(_G.C_PlayerCache.GetPlayerInfoByName) == "function"
 
@@ -310,6 +314,20 @@ API.GetCurrentChatGUID = function()
   if API.chatidentity then
     return _G.GetCurrentChatGUID()
   end
+end
+
+API.UnitIsInMyGuild = function(unitOrName)
+  if API.guildmembership and unitOrName then
+    return _G.UnitIsInMyGuild(unitOrName) and true or false
+  end
+  return false
+end
+
+API.IsFriend = function(nameOrGUID)
+  if API.friendmembership and nameOrGUID then
+    return _G.C_FriendList.IsFriend(nameOrGUID) and true or false
+  end
+  return false
 end
 
 API.GetPlayerInfoByGUID = function(guid)
