@@ -314,6 +314,7 @@ end
 -- so disabling healing predictions leaves no spell hook on the hot path.
 local scanner
 local hooksInstalled
+local useClassicSenderEvents
 
 local function TrackCastSpell(id, bookType)
   if not libpredict.sender.enabled then return end
@@ -418,10 +419,26 @@ libpredict.sender:SetScript("OnEvent", function()
     end
   elseif event == "UNIT_SPELLCAST_SENT" then
     if arg1 ~= "player" then return end
-    -- ClassicAPI follows the modern event shape: unit, target, castGUID,
-    -- spellID, spellName, rank. TBC's legacy shape stores target in arg4.
-    local castTarget = GetExpansion() == "vanilla" and arg2 or arg4
-    senttarget = castTarget and castTarget ~= "" and castTarget or nil
+
+    if GetExpansion() == "vanilla" and useClassicSenderEvents then
+      -- ClassicAPI already resolved the actual outgoing spell and target:
+      -- unit, target, castGUID, spellID, spellName, rank. Use it directly so
+      -- prediction tracking needs no CastSpell/UseAction hooks at all.
+      local target = arg2 and arg2 ~= "" and arg2 or UnitName("player")
+      local spell = arg5
+      local rank = arg6 or ""
+
+      senttarget = target
+      if spell then
+        spell_queue[1] = spell
+        spell_queue[2] = spell .. rank
+        spell_queue[3] = target
+      end
+    else
+      -- Native TBC layout keeps the target in arg4.
+      local castTarget = arg4
+      senttarget = castTarget and castTarget ~= "" and castTarget or nil
+    end
   elseif strfind(event, "SPELLCAST_START", 1) then
     local spell, time = arg1, arg2
 
@@ -527,17 +544,19 @@ function libpredict:Enable()
     -- those instead of registering both event families and processing each cast
     -- twice. Keep the native SPELLCAST_DELAYED event because it carries the
     -- exact delay delta consumed by HealDelay().
-    local useClassicCastEvents = API and API.eventutils and _G.C_EventUtils
+    useClassicSenderEvents = API and API.eventutils and _G.C_EventUtils
       and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_START")
       and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_STOP")
       and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_FAILED")
+      and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_FAILED_QUIET")
       and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_INTERRUPTED")
       and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_SENT")
 
-    if useClassicCastEvents then
+    if useClassicSenderEvents then
       self.sender:RegisterEvent("UNIT_SPELLCAST_START")
       self.sender:RegisterEvent("UNIT_SPELLCAST_STOP")
       self.sender:RegisterEvent("UNIT_SPELLCAST_FAILED")
+      self.sender:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET")
       self.sender:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
       self.sender:RegisterEvent("UNIT_SPELLCAST_SENT")
     else
@@ -563,7 +582,9 @@ function libpredict:Enable()
   self.sender:RegisterEvent("UNIT_INVENTORY_CHANGED")
   self.sender:RegisterEvent("SKILL_LINES_CHANGED")
 
-  InstallSenderHooks()
+  if not useClassicSenderEvents then
+    InstallSenderHooks()
+  end
 end
 
 ShaguTweaks.libpredict = libpredict
