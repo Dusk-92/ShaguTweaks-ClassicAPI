@@ -11,12 +11,16 @@ local module = ShaguTweaks:register({
 })
 
 module.enable = function(self)
+  if not API.tooltipsetitem or not API.modifierstate or not API.timer
+    or not API.iteminventorytype or not API.iteminventoryslotkey then
+    return
+  end
+
   local sides = { "Left", "Right" }
 
   local function AddHeader(tooltip)
     local name = tooltip:GetName()
 
-    -- shift all entries one line down
     for i=tooltip:NumLines(), 1, -1 do
       for _, side in pairs(sides) do
         local current = _G[name.."Text"..side..i]
@@ -28,15 +32,11 @@ module.enable = function(self)
 
           if text and text ~= "" then
             if tooltip:NumLines() < i+1 then
-              -- add new line if required
               tooltip:AddLine(text, r, g, b, true)
             else
-              -- update existing lines
               below:SetText(text)
               below:SetTextColor(r, g, b)
               below:Show()
-
-              -- hide processed line
               current:Hide()
             end
           end
@@ -44,174 +44,85 @@ module.enable = function(self)
       end
     end
 
-    -- add label to first line
     _G[name.."TextLeft1"]:SetTextColor(.5, .5, .5, 1)
     _G[name.."TextLeft1"]:SetText(CURRENTLY_EQUIPPED)
     _G[name.."TextLeft1"]:Show()
-
-    -- update tooltip sizes
     tooltip:Show()
   end
 
-  local itemtypes = {
-    ["deDE"] = {
-      ["INVTYPE_WAND"] = "Zauberstab",
-      ["INVTYPE_THROWN"] = "Wurfwaffe",
-      ["INVTYPE_GUN"] = "Schusswaffe",
-      ["INVTYPE_CROSSBOW"] = "Armbrust",
-      ["INVTYPE_PROJECTILE"] = "Projektil",
-    },
-    ["enUS"] = {
-      ["INVTYPE_WAND"] = "Wand",
-      ["INVTYPE_THROWN"] = "Thrown",
-      ["INVTYPE_GUN"] = "Gun",
-      ["INVTYPE_CROSSBOW"] = "Crossbow",
-      ["INVTYPE_PROJECTILE"] = "Projectile",
-    },
-    ["esES"] = {
-      ["INVTYPE_WAND"] = "Varita",
-      ["INVTYPE_THROWN"] = "Arma arrojadiza",
-      ["INVTYPE_GUN"] = "Arma de fuego",
-      ["INVTYPE_CROSSBOW"] = "Ballesta",
-      ["INVTYPE_PROJECTILE"] = "Proyectil",
-    },
-    ["frFR"] = {
-      ["INVTYPE_WAND"] = "Baguette",
-      ["INVTYPE_THROWN"] = "Armes de jet",
-      ["INVTYPE_GUN"] = "Arme à feu",
-      ["INVTYPE_CROSSBOW"] = "Arbalète",
-      ["INVTYPE_PROJECTILE"] = "Projectile",
-    },
-    ["koKR"] = {
-      ["INVTYPE_WAND"] = "마법봉",
-      ["INVTYPE_THROWN"] = "투척 무기",
-      ["INVTYPE_GUN"] = "총",
-      ["INVTYPE_CROSSBOW"] = "석궁",
-      ["INVTYPE_PROJECTILE"] = "투사체",
-    },
-    ["ruRU"] = {
-      ["INVTYPE_WAND"] = "Жезл",
-      ["INVTYPE_THROWN"] = "Метательное",
-      ["INVTYPE_GUN"] = "Огнестрельное",
-      ["INVTYPE_CROSSBOW"] = "Арбалет",
-      ["INVTYPE_PROJECTILE"] = "Боеприпасы",
-    },
-    ["zhCN"] = {
-      ["INVTYPE_WAND"] = "魔杖",
-      ["INVTYPE_THROWN"] = "投掷武器",
-      ["INVTYPE_GUN"] = "枪械",
-      ["INVTYPE_CROSSBOW"] = "弩",
-      ["INVTYPE_PROJECTILE"] = "弹药",
-    }
-  }
-
-  -- Vanilla misses a few inventory type labels in some locales.
-  local localeTypes = itemtypes[GetLocale()] or {}
-  for key, value in pairs(localeTypes) do setglobal(key, value) end
-  INVTYPE_WEAPON_OTHER = INVTYPE_WEAPON.."_other"
-  INVTYPE_FINGER_OTHER = INVTYPE_FINGER.."_other"
-  INVTYPE_TRINKET_OTHER = INVTYPE_TRINKET.."_other"
-
   local slots = {
-    [INVTYPE_2HWEAPON] = "MainHandSlot",
-    [INVTYPE_BODY] = "ShirtSlot",
-    [INVTYPE_CHEST] = "ChestSlot",
-    [INVTYPE_CLOAK] = "BackSlot",
-    [INVTYPE_FEET] = "FeetSlot",
-    [INVTYPE_FINGER] = "Finger0Slot",
-    [INVTYPE_FINGER_OTHER] = "Finger1Slot",
-    [INVTYPE_HAND] = "HandsSlot",
-    [INVTYPE_HEAD] = "HeadSlot",
-    [INVTYPE_HOLDABLE] = "SecondaryHandSlot",
-    [INVTYPE_LEGS] = "LegsSlot",
-    [INVTYPE_NECK] = "NeckSlot",
-    [INVTYPE_RANGED] = "RangedSlot",
-    [INVTYPE_RELIC] = "RangedSlot",
-    [INVTYPE_ROBE] = "ChestSlot",
-    [INVTYPE_SHIELD] = "SecondaryHandSlot",
-    [INVTYPE_SHOULDER] = "ShoulderSlot",
-    [INVTYPE_TABARD] = "TabardSlot",
-    [INVTYPE_TRINKET] = "Trinket0Slot",
-    [INVTYPE_TRINKET_OTHER] = "Trinket1Slot",
-    [INVTYPE_WAIST] = "WaistSlot",
-    [INVTYPE_WEAPON] = "MainHandSlot",
-    [INVTYPE_WEAPON_OTHER] = "SecondaryHandSlot",
-    [INVTYPE_WEAPONMAINHAND] = "MainHandSlot",
-    [INVTYPE_WEAPONOFFHAND] = "SecondaryHandSlot",
-    [INVTYPE_WRIST] = "WristSlot",
-    [INVTYPE_WAND] = "RangedSlot",
-    [INVTYPE_GUN] = "RangedSlot",
-    [INVTYPE_PROJECTILE] = "AmmoSlot",
-    [INVTYPE_CROSSBOW] = "RangedSlot",
-    [INVTYPE_THROWN] = "RangedSlot",
+    ["INVTYPE_2HWEAPON"] = { "MainHandSlot" },
+    ["INVTYPE_BODY"] = { "ShirtSlot" },
+    ["INVTYPE_CHEST"] = { "ChestSlot" },
+    ["INVTYPE_CLOAK"] = { "BackSlot" },
+    ["INVTYPE_FEET"] = { "FeetSlot" },
+    ["INVTYPE_FINGER"] = { "Finger0Slot", "Finger1Slot" },
+    ["INVTYPE_HAND"] = { "HandsSlot" },
+    ["INVTYPE_HEAD"] = { "HeadSlot" },
+    ["INVTYPE_HOLDABLE"] = { "SecondaryHandSlot" },
+    ["INVTYPE_LEGS"] = { "LegsSlot" },
+    ["INVTYPE_NECK"] = { "NeckSlot" },
+    ["INVTYPE_RANGED"] = { "RangedSlot" },
+    ["INVTYPE_RANGEDRIGHT"] = { "RangedSlot" },
+    ["INVTYPE_RELIC"] = { "RangedSlot" },
+    ["INVTYPE_ROBE"] = { "ChestSlot" },
+    ["INVTYPE_SHIELD"] = { "SecondaryHandSlot" },
+    ["INVTYPE_SHOULDER"] = { "ShoulderSlot" },
+    ["INVTYPE_TABARD"] = { "TabardSlot" },
+    ["INVTYPE_TRINKET"] = { "Trinket0Slot", "Trinket1Slot" },
+    ["INVTYPE_WAIST"] = { "WaistSlot" },
+    ["INVTYPE_WEAPON"] = { "MainHandSlot", "SecondaryHandSlot" },
+    ["INVTYPE_WEAPONMAINHAND"] = { "MainHandSlot" },
+    ["INVTYPE_WEAPONOFFHAND"] = { "SecondaryHandSlot" },
+    ["INVTYPE_WRIST"] = { "WristSlot" },
+    ["INVTYPE_AMMO"] = { "AmmoSlot" },
+    ["INVTYPE_THROWN"] = { "RangedSlot" },
   }
 
   ShoppingTooltip1:SetClampedToScreen(true)
   ShoppingTooltip2:SetClampedToScreen(true)
 
-  local function IsCompareKeyDown()
-    if API and API.IsShiftKeyDown then
-      return API.IsShiftKeyDown()
-    end
-    return IsShiftKeyDown()
+  local function GetSlotNames(tooltip)
+    local itemID = API.GetTooltipItemID(tooltip)
+    if not itemID then return end
+
+    local inventoryType = API.GetItemInventoryTypeByID(itemID)
+    if inventoryType == nil then return end
+
+    local slotKey = API.GetItemInventorySlotKey(inventoryType)
+    return slotKey and slots[slotKey]
   end
 
-  local function GetSlotType(tooltip)
-    -- Prefer ClassicAPI's cache-backed inventory type. This avoids depending on
-    -- localized tooltip text and works for Turtle WoW custom items when the
-    -- tooltip exposes its item link.
-    if API and tooltip.GetItem and API.GetItemIDFromLink
-      and API.GetItemInventoryTypeByID and API.GetItemInventorySlotKey then
-      local _, link = tooltip:GetItem()
-      local itemID = API.GetItemIDFromLink(link)
-      local inventoryType = itemID and API.GetItemInventoryTypeByID(itemID)
-      local slotKey = inventoryType and API.GetItemInventorySlotKey(inventoryType)
-      local slotType = slotKey and _G[slotKey]
-      if slotType and slots[slotType] then
-        return slotType
-      end
-    end
+  local activeTooltip
 
-    -- 1.12 fallback: find the localized inventory type in the tooltip text.
-    local tooltipName = tooltip:GetName()
-    for i=1,tooltip:NumLines() do
-      local tmpText = _G[tooltipName .. "TextLeft"..i]
-      local text = tmpText and tmpText:GetText()
-      if text and slots[text] then
-        return text
-      end
-    end
+  local function HideCompare(tooltip)
+    if tooltip and activeTooltip ~= tooltip then return end
+    ShoppingTooltip1:Hide()
+    ShoppingTooltip2:Hide()
+    activeTooltip = nil
   end
 
   local function ShowCompare(tooltip)
     if not tooltip then return end
 
-    -- Always clear previous comparisons first so switching from a ring/trinket
-    -- to a single-slot item cannot leave ShoppingTooltip2 behind.
-    ShoppingTooltip1:Hide()
-    ShoppingTooltip2:Hide()
+    HideCompare()
 
-    if not IsCompareKeyDown() then return end
+    if not API.IsShiftKeyDown() then return end
 
-    local slotType = GetSlotType(tooltip)
-    local slotName = slotType and slots[slotType]
-    if not slotName then return end
+    local slotNames = GetSlotNames(tooltip)
+    if not slotNames or not slotNames[1] then return end
 
-    local slotID = GetInventorySlotInfo(slotName)
-
-    -- determine screen part
     local x = GetCursorPosition() / UIParent:GetEffectiveScale()
     local anchor = x < GetScreenWidth() / 2 and "TOPLEFT" or "TOPRIGHT"
     local relative = x < GetScreenWidth() / 2 and "TOPRIGHT" or "TOPLEFT"
 
-    -- overwrite position for tooltips without owner
     local pos, parent = tooltip:GetPoint()
     if parent and parent == UIParent and pos == "TOPRIGHT" then
       anchor = "TOPRIGHT"
       relative = "TOPLEFT"
     end
 
-    -- first tooltip
+    local slotID = GetInventorySlotInfo(slotNames[1])
     ShoppingTooltip1:SetOwner(tooltip, "ANCHOR_NONE")
     ShoppingTooltip1:ClearAllPoints()
     ShoppingTooltip1:SetPoint(anchor, tooltip, relative, 0, 0)
@@ -219,9 +130,8 @@ module.enable = function(self)
     ShoppingTooltip1:Show()
     AddHeader(ShoppingTooltip1)
 
-    -- second tooltip for rings, trinkets and one-hand weapons
-    if slots[slotType .. "_other"] then
-      local slotID_other = GetInventorySlotInfo(slots[slotType .. "_other"])
+    if slotNames[2] then
+      local secondSlotID = GetInventorySlotInfo(slotNames[2])
       ShoppingTooltip2:SetOwner(tooltip, "ANCHOR_NONE")
       ShoppingTooltip2:ClearAllPoints()
       if ShoppingTooltip1:IsShown() then
@@ -229,59 +139,56 @@ module.enable = function(self)
       else
         ShoppingTooltip2:SetPoint(anchor, tooltip, relative, 0, 0)
       end
-      ShoppingTooltip2:SetInventoryItem("player", slotID_other)
+      ShoppingTooltip2:SetInventoryItem("player", secondSlotID)
       ShoppingTooltip2:Show()
       AddHeader(ShoppingTooltip2)
     end
+
+    activeTooltip = tooltip
   end
 
-  -- Recalculate only when a tooltip is actually shown/updated. The original
-  -- module scanned every tooltip line on every rendered frame.
   local trackedTooltips = {}
+  local pending = {}
+
+  local function ScheduleCompare(tooltip)
+    if not tooltip or pending[tooltip] then return end
+    pending[tooltip] = true
+
+    API.Defer(function()
+      pending[tooltip] = nil
+      if tooltip:IsShown() then
+        ShowCompare(tooltip)
+      end
+    end)
+  end
+
   local function TrackTooltip(tooltip)
     if not tooltip or trackedTooltips[tooltip] then return end
     trackedTooltips[tooltip] = true
 
-    ShaguTweaks.hooksecurefunc(tooltip, "Show", function()
-      ShowCompare(tooltip)
+    tooltip:HookScript("OnTooltipSetItem", function()
+      ScheduleCompare(tooltip)
+    end)
+
+    tooltip:HookScript("OnTooltipCleared", function()
+      HideCompare(tooltip)
     end)
   end
 
   TrackTooltip(GameTooltip)
 
-  -- ClassicAPI fires MODIFIER_STATE_CHANGED after updating its own L/R key
-  -- bitmap. Reading that bitmap here makes the comparison appear immediately
-  -- when Shift is pressed while an item tooltip is already visible.
   local modifier = CreateFrame("Frame")
-  if API and API.modifierstate then
-    modifier:RegisterEvent("MODIFIER_STATE_CHANGED")
-    modifier:SetScript("OnEvent", function()
-      if arg1 == "LSHIFT" or arg1 == "RSHIFT" then
-        for tooltip in pairs(trackedTooltips) do
-          if tooltip:IsShown() then
-            ShowCompare(tooltip)
-          end
-        end
-      end
-    end)
-  else
-    -- Compatibility fallback for an older ClassicAPI build: poll only the
-    -- Shift boolean, not all tooltip lines every frame.
-    local previousShift = IsCompareKeyDown()
-    modifier:SetScript("OnUpdate", function()
-      local currentShift = IsCompareKeyDown()
-      if currentShift ~= previousShift then
-        previousShift = currentShift
-        for tooltip in pairs(trackedTooltips) do
-          if tooltip:IsShown() then
-            ShowCompare(tooltip)
-          end
-        end
-      end
-    end)
-  end
+  modifier:RegisterEvent("MODIFIER_STATE_CHANGED")
+  modifier:SetScript("OnEvent", function()
+    if arg1 ~= "LSHIFT" and arg1 ~= "RSHIFT" then return end
 
-  -- AtlasLoot uses its own tooltip frames; hook their Show calls the same way.
+    for tooltip in pairs(trackedTooltips) do
+      if tooltip:IsShown() and API.GetTooltipItemID(tooltip) then
+        ShowCompare(tooltip)
+      end
+    end
+  end)
+
   ShaguTweaks.HookAddonOrVariable("AtlasLoot", function()
     TrackTooltip(AtlasLootTooltip)
     TrackTooltip(AtlasLootTooltip2)
