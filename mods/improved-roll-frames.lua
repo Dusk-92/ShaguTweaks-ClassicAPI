@@ -132,7 +132,7 @@ module.enable = function(self)
       local frame = ShaguTweaks.roll.frames[i]
       if frame and frame:IsVisible() and frame.rollID
         and not frame.historyRollID then
-        local itemID = frame.itemID or API.GetLootRollItemID(frame.rollID)
+        local itemID = frame.itemID or _G.GetLootRollItemID(frame.rollID)
         local historyRollID, itemIndex =
           FindUnclaimedHistory(itemID, claimed)
 
@@ -414,7 +414,7 @@ module.enable = function(self)
       frame.rollID = id
       frame.rollTime = rollTime
       frame.historyRollID = nil
-      frame.itemID = API.GetLootRollItemID(id)
+      frame.itemID = _G.GetLootRollItemID(id)
       ShaguTweaks.roll:UpdateLootRoll(available)
     end
   end
