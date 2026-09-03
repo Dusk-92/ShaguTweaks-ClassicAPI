@@ -234,7 +234,7 @@ module.enable = function(self)
     f.greed:SetWidth(esize)
     f.greed:SetHeight(esize)
     f.greed:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Coin-Up")
-    f.greed:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Dice-Highlight")
+    f.greed:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Coin-Highlight")
 
     f.greed.count = f.greed:CreateFontString("GREED")
     f.greed.count:SetPoint("CENTER", f.greed, "CENTER", 0, 1)
