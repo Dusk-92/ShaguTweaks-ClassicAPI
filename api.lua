@@ -511,6 +511,17 @@ API.GetLootSlotItemID = function(slot)
   return GetItemIDFromLink(_G.GetLootSlotLink(slot))
 end
 
+API.GetLootRollItemID = function(rollID)
+  if type(_G.GetLootRollItemID) == "function" then
+    local itemID = _G.GetLootRollItemID(rollID)
+    if itemID then return itemID end
+  end
+
+  if type(_G.GetLootRollItemLink) == "function" then
+    return GetItemIDFromLink(_G.GetLootRollItemLink(rollID))
+  end
+end
+
 API.GetQuestItemID = function(itemType, index)
   if type(_G.GetQuestItemID) == "function" then
     return _G.GetQuestItemID(itemType, index)
@@ -575,6 +586,12 @@ API.GetAuctionItemID = function(itemType, index)
     return _G.GetAuctionItemID(itemType, index)
   end
   return GetItemIDFromLink(_G.GetAuctionItemLink(itemType, index))
+end
+
+API.GetAuctionSellItemID = function()
+  if type(_G.GetAuctionSellItemID) == "function" then
+    return _G.GetAuctionSellItemID()
+  end
 end
 
 API.SetOverrideBindingClick = function(owner, priority, key, buttonName, mouseButton)
