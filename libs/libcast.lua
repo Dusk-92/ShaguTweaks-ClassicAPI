@@ -146,11 +146,27 @@ end
 -- main data
 libcast.db = { [player] = {} }
 
--- ClassicAPI exposes remote cast state directly through C_Spell and the
--- UNIT_SPELLCAST_* event family used by the castbar modules. Keep the original
--- combat-text parser only for older ClassicAPI builds that lack that surface;
--- on current ClassicAPI these high-frequency chat events stay unregistered.
-if not (API and API.casts) then
+-- Current ClassicAPI can maintain the legacy name-keyed libcast cache from
+-- structured unit spell events. This preserves the public ShaguTweaks
+-- UnitCastingInfo/UnitChannelInfo fallback without parsing every combat-text
+-- line. Older ClassicAPI builds keep the historical parser below.
+local classicRemoteEvents = API and API.casts and API.eventutils
+  and _G.C_EventUtils
+  and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_START")
+  and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_STOP")
+  and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_CHANNEL_START")
+  and _G.C_EventUtils.IsEventValid("UNIT_SPELLCAST_CHANNEL_STOP")
+
+if classicRemoteEvents then
+  libcast:RegisterEvent("UNIT_SPELLCAST_START")
+  libcast:RegisterEvent("UNIT_SPELLCAST_STOP")
+  libcast:RegisterEvent("UNIT_SPELLCAST_FAILED")
+  libcast:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+  libcast:RegisterEvent("UNIT_SPELLCAST_DELAYED")
+  libcast:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
+  libcast:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+  libcast:RegisterEvent("UNIT_SPELLCAST_CHANNEL_UPDATE")
+else
   libcast:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
   libcast:RegisterEvent("CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE")
   libcast:RegisterEvent("CHAT_MSG_SPELL_HOSTILEPLAYER_BUFF")
@@ -181,7 +197,70 @@ libcast:RegisterEvent("SPELLCAST_CHANNEL_START")
 libcast:RegisterEvent("SPELLCAST_CHANNEL_STOP")
 libcast:RegisterEvent("SPELLCAST_CHANNEL_UPDATE")
 
+local function ClearClassicRemote(unit)
+  if not unit or unit == "player" then return end
+  local name = UnitName(unit)
+  if not name then return end
+
+  local cast = libcast.db[name]
+  if cast then
+    cast.cast = nil
+    cast.rank = nil
+    cast.start = nil
+    cast.casttime = nil
+    cast.icon = nil
+    cast.channel = nil
+  end
+end
+
+local function UpdateClassicRemote(unit, channel)
+  if not unit or unit == "player" then return end
+  local name = UnitName(unit)
+  if not name then return end
+
+  local spell, rank, text, icon, startTime, endTime
+  if channel then
+    spell, rank, text, icon, startTime, endTime = API.GetChannelInfo(unit)
+  else
+    spell, rank, text, icon, startTime, endTime = API.GetCastInfo(unit)
+  end
+
+  if not spell or not startTime or not endTime then
+    ClearClassicRemote(unit)
+    return
+  end
+
+  local cast = libcast.db[name]
+  if not cast then
+    cast = {}
+    libcast.db[name] = cast
+  end
+
+  cast.cast = spell
+  cast.rank = rank
+  cast.start = startTime / 1000
+  cast.casttime = endTime - startTime
+  cast.icon = icon
+  cast.channel = channel and true or nil
+end
+
 libcast:SetScript("OnEvent", function()
+  -- Keep the public legacy cache current from ClassicAPI without combat text.
+  if classicRemoteEvents and strfind(event, "UNIT_SPELLCAST_", 1) then
+    if arg1 == "player" then return end
+
+    if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_DELAYED" then
+      UpdateClassicRemote(arg1, false)
+    elseif event == "UNIT_SPELLCAST_CHANNEL_START" or event == "UNIT_SPELLCAST_CHANNEL_UPDATE" then
+      UpdateClassicRemote(arg1, true)
+    elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_FAILED"
+      or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_CHANNEL_STOP"
+    then
+      ClearClassicRemote(arg1)
+    end
+    return
+  end
+
   -- Fill database with player casts
   if event == "SPELLCAST_START" then
     local icon = L["spells"][arg1] and L["spells"][arg1].icon and string.format("%s%s", "Interface\\Icons\\", L["spells"][arg1].icon) or lastcasttex
