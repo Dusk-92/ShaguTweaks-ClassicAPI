@@ -1,5 +1,6 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
+local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["Chat Spam Filter"],
@@ -22,26 +23,14 @@ local CLEAN_INTERVAL = 30
 local cache = { {}, {}, INDEX = 1 }
 local last_cleanup = 0
 
+local canFilterEmotes = API and API.guildmembership and API.friendmembership
+
 local function IsGuildMate(name)
-  if not name or not IsInGuild() then return false end
-  for i = 1, GetNumGuildMembers() do
-    local rname = GetGuildRosterInfo(i)
-    if rname and strlower(rname) == strlower(name) then
-      return true
-    end
-  end
-  return false
+  return name and API.UnitIsInMyGuild(name) or false
 end
 
 local function IsFriendOf(name)
-  if not name then return false end
-  for i = 1, GetNumFriends() do
-    local fname = GetFriendInfo(i)
-    if fname and strlower(fname) == strlower(name) then
-      return true
-    end
-  end
-  return false
+  return name and API.IsFriend(name) or false
 end
 
 local function PruneCache(now)
@@ -116,7 +105,8 @@ module.enable = function(self)
     -- strangers (guildmates/friends are never filtered on emote)
     if arg1 and arg2 and arg2 ~= GetPlayerName("player") then
       local isChatType = event == "CHAT_MSG_SAY" or event == "CHAT_MSG_CHANNEL" or event == "CHAT_MSG_YELL"
-      local isStrangerEmote = event == "CHAT_MSG_EMOTE" and not (IsGuildMate(arg2) or IsFriendOf(arg2))
+      local isStrangerEmote = canFilterEmotes and event == "CHAT_MSG_EMOTE"
+        and not (IsGuildMate(arg2) or IsFriendOf(arg2))
 
       if (isChatType or isStrangerEmote) and IsDuplicate(this, arg1) then
         return
