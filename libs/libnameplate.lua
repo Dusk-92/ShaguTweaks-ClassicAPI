@@ -50,7 +50,6 @@ local function InitializePlate(plate)
     onInit[index](plate)
   end
 
-  -- Preserve the native/addon scripts and append ShaguTweaks callbacks.
   local oldUpdate = plate:GetScript("OnUpdate")
   plate:SetScript("OnUpdate", function(self, elapsed)
     if oldUpdate then oldUpdate(self, elapsed) end
@@ -71,28 +70,17 @@ local function InitializePlate(plate)
   return true
 end
 
--- Event-driven discovery still obtains the real native frame through
--- WorldFrame:GetChildren(). ClassicAPI's C_NamePlate getters can return fresh
--- wrapper tables for default engine plates, so caching those wrappers would be
--- unsafe. The NAME_PLATE_UNIT_ADDED event is used only as a precise wake-up.
 local function DiscoverNameplates()
   local count = WorldFrame:GetNumChildren()
   local children = { WorldFrame:GetChildren() }
-  local added = 0
 
   for index = 1, count do
-    if InitializePlate(children[index]) then
-      added = added + 1
-    end
+    InitializePlate(children[index])
   end
 
   lastParentCount = count
-  return added
 end
 
--- Older ClassicAPI builds without nameplate events retain the historical
--- polling fallback. Only enumerate children when the WorldFrame child count
--- changes; registry checks keep repeated frames idempotent.
 local function ScanNameplatesLegacy()
   local count = WorldFrame:GetNumChildren()
   if count == lastParentCount then return end
@@ -103,7 +91,7 @@ local eventDriver = CreateFrame("Frame")
 local retryDriver = CreateFrame("Frame")
 retryDriver:SetScript("OnUpdate", nil)
 
-local function ScheduleDiscoveryRetry()
+local function ScheduleDiscovery()
   if retryDriver:GetScript("OnUpdate") then return end
   retryDriver:SetScript("OnUpdate", function()
     DiscoverNameplates()
@@ -127,16 +115,13 @@ function libnameplate:Enable()
   self.enabled = true
 
   if HasClassicNameplateEvents() then
-    -- Discover plates that were already visible when a consumer was enabled.
-    DiscoverNameplates()
+    -- Never enumerate WorldFrame children synchronously from the ClassicAPI
+    -- nameplate event path. Defer discovery to the next rendered frame.
+    ScheduleDiscovery()
 
     eventDriver:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     eventDriver:SetScript("OnEvent", function()
-      -- In current ClassicAPI the nameplate normally exists by event dispatch
-      -- time. Scan immediately, then do one next-frame retry to tolerate engine
-      -- ordering differences without leaving a permanent OnUpdate running.
-      DiscoverNameplates()
-      ScheduleDiscoveryRetry()
+      ScheduleDiscovery()
     end)
 
     self:SetScript("OnUpdate", nil)
@@ -151,14 +136,9 @@ function libnameplate:EnableIfNeeded()
   end
 end
 
--- Stay completely dormant until an enabled ShaguTweaks module (or an
--- external addon) actually registers a nameplate callback.
 libnameplate.enabled = false
 libnameplate:SetScript("OnUpdate", nil)
 
--- Load-on-demand addons can register callbacks after the normal ShaguTweaks
--- initialization pass. ADDON_LOADED is enough to catch those without keeping
--- a polling OnUpdate alive while the library is unused.
 local activation = CreateFrame("Frame")
 activation:RegisterEvent("ADDON_LOADED")
 activation:SetScript("OnEvent", function()
