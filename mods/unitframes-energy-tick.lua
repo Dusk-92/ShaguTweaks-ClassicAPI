@@ -16,6 +16,10 @@ module.enable = function(self)
   energytick:RegisterEvent("UNIT_ENERGY")
   energytick:RegisterEvent("UNIT_MANA")
   energytick:SetScript("OnEvent", function()
+    -- This module only tracks the player. Ignore unrelated unit events before
+    -- doing any power queries or visibility work.
+    if arg1 and arg1 ~= "player" then return end
+
     if UnitPowerType("player") == 0 then
       this.mode = "MANA"
       -- hide if full mana and not in combat
