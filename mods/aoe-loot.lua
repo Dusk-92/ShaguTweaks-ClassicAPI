@@ -12,14 +12,21 @@ local module = ShaguTweaks:register({
 })
 
 module.enable = function(self)
-  -- AoE Loot relies entirely on ClassicAPI's native corpse walker and
-  -- container classification. Do not keep partial legacy behavior when those
-  -- capabilities are unavailable.
-  if not API or not API.aoeloot or not API.containeropenable then return end
+  -- AoE Loot relies entirely on ClassicAPI's native corpse walker,
+  -- container classification and timer. Do not keep partial legacy behavior
+  -- when those capabilities are unavailable.
+  if not API or not API.aoeloot or not API.containeropenable or not API.timer then return end
 
   local frame = CreateFrame("Frame", "ShaguTweaksAoELoot")
   local pending = false
   local containerLootDeadline = 0
+  local takeoverGeneration = 0
+  local TAKEOVER_DELAY = 0.3
+
+  local function CancelTakeover()
+    takeoverGeneration = takeoverGeneration + 1
+    pending = false
+  end
 
   local function TrackContainerUse(bag, slot)
     local isOpenable, canOpen = API.IsContainerItemOpenable(bag, slot)
@@ -51,32 +58,31 @@ module.enable = function(self)
     return type(units) == "table" and table.getn(units) > 0
   end
 
-  local function StartAoELoot()
-    frame:SetScript("OnUpdate", nil)
-    pending = false
+  local function StartAoELoot(generation)
+    if generation ~= takeoverGeneration or not pending then return end
 
+    pending = false
     if CanStartAoELoot() then
       API.LootAllCorpses()
     end
   end
 
-  local function ResolveLootSession()
-    -- Give the client's own autoloot path one frame to act before taking over.
-    -- This avoids closing the loot session underneath SuperWoW/SuperAPI or a
-    -- quickloot-patched client while remaining independent of either mod.
-    frame:SetScript("OnUpdate", nil)
-    if not pending then return end
+  local function TakeOverLootSession()
+    -- AoE Loot owns corpse sessions while enabled. Close the normal client
+    -- window immediately so Vanilla autoloot, SuperAPI SetAutoloot modes and
+    -- quickloot-patched clients cannot keep control of the session.
+    takeoverGeneration = takeoverGeneration + 1
+    local generation = takeoverGeneration
+    pending = true
+    CloseLoot()
 
-    -- Manual loot still has items after that frame. Close only in that case;
-    -- when native autoloot already emptied/closed the session, leave it alone.
-    if GetNumLootItems and GetNumLootItems() > 0 then
-      CloseLoot()
-    end
-
-    -- The original path already waits one frame after CloseLoot before handing
-    -- control to ClassicAPI. Keep that release frame for both manual and native
-    -- autoloot paths.
-    frame:SetScript("OnUpdate", StartAoELoot)
+    -- Native autoloot may already have emitted loot packets before LOOT_OPENED
+    -- reaches Lua. ClassicAPI's own loot test uses the same 0.3s settling
+    -- window between loot operations; after it expires the native corpse walker
+    -- becomes the sole owner of all remaining nearby corpse loot.
+    C_Timer.After(TAKEOVER_DELAY, function()
+      StartAoELoot(generation)
+    end)
   end
 
   frame:RegisterEvent("LOOT_OPENED")
@@ -89,13 +95,15 @@ module.enable = function(self)
     if containerLootDeadline > 0 then
       local isContainerLoot = GetTime() <= containerLootDeadline
       containerLootDeadline = 0
-      if isContainerLoot then return end
+      if isContainerLoot then
+        CancelTakeover()
+        return
+      end
     end
 
     -- The master looter must keep the normal window to inspect and assign loot.
     if IsMasterLootActive() then
-      pending = false
-      frame:SetScript("OnUpdate", nil)
+      CancelTakeover()
       return
     end
 
@@ -103,9 +111,11 @@ module.enable = function(self)
     -- Only take over when ClassicAPI can see at least one nearby lootable unit.
     if not HasNearbyLootableCorpse() then return end
 
-    if pending or not CanStartAoELoot() then return end
+    -- A queued takeover already owns this interaction. ClassicAPI suppresses
+    -- its own LOOT_OPENED/LOOT_CLOSED events while walking corpses, so no
+    -- additional session needs to be stacked here.
+    if pending then return end
 
-    pending = true
-    frame:SetScript("OnUpdate", ResolveLootSession)
+    TakeOverLootSession()
   end)
 end
