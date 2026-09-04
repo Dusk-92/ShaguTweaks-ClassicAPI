@@ -1,8 +1,11 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
 local API = ShaguTweaks.API
-local LegacyCastingInfo = ShaguTweaks.UnitCastingInfo
-local LegacyChannelInfo = ShaguTweaks.UnitChannelInfo
+
+-- These legacy wrappers are kept only as a reader for SuperWoW's GUID-keyed
+-- libcast cache. Real unit-token cast discovery is ClassicAPI-only below.
+local SuperWoWCastingInfo = ShaguTweaks.UnitCastingInfo
+local SuperWoWChannelInfo = ShaguTweaks.UnitChannelInfo
 
 local module = ShaguTweaks:register({
   title = T["Enemy Castbars"],
@@ -61,21 +64,6 @@ castbar.text:SetPoint("CENTER", castbar, "CENTER", 0, 0)
 local font, size = castbar.text:GetFont()
 castbar.text:SetFont(font, size - 2, "THINOUTLINE")
 
-local function QueryLegacy(query)
-  if not query then return end
-
-  local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyCastingInfo(query)
-  if cast then
-    return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
-  end
-
-  local channel
-  channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyChannelInfo(query)
-  if channel then
-    return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
-  end
-end
-
 local function QuerySuperWoW(guid, channelSpellID, hasChannel)
   if not guid then return end
 
@@ -85,14 +73,14 @@ local function QuerySuperWoW(guid, channelSpellID, hasChannel)
   if cached.channel then
     if not hasChannel or cached.spellID ~= channelSpellID then return end
 
-    local channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyChannelInfo(guid)
+    local channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = SuperWoWChannelInfo(guid)
     if channel then
       return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
     end
     return
   end
 
-  local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyCastingInfo(guid)
+  local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = SuperWoWCastingInfo(guid)
   if cast then
     return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
   end
@@ -103,45 +91,29 @@ local function QueryCast(unit)
 
   -- ClassicAPI is authoritative for real unit tokens and provides exact
   -- engine/server timing. A nil result for an existing unit means that exact
-  -- GUID is not casting; don't fall back to the legacy name-keyed database,
-  -- otherwise two NPCs with the same name can share one castbar incorrectly.
-  if API and API.casts then
-    local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo(unit)
-    if cast then
-      return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
-    end
-
-    local channel, notInterruptible, channelSpellID, hasChannel
-    channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill,
-      notInterruptible, channelSpellID, hasChannel = API.GetChannelInfo(unit)
-    if channel then
-      return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
-    end
-
-    -- SuperWoW remains the GUID-keyed fallback for regular casts. Channels
-    -- additionally require ClassicAPI's authoritative live state and matching
-    -- spellID, preventing a stale cached channel from becoming a ghost bar.
-    if ShaguTweaks.superwow_active and not UnitIsUnit(unit, "player") then
-      local guid = API.UnitGUID(unit)
-      if guid then
-        local a, b, c, d, e, f, g, h = QuerySuperWoW(guid, channelSpellID, hasChannel)
-        if a then return a, b, c, d, e, f, g, h end
-      end
-    end
-
-    return
+  -- GUID is not casting; never fall back to the legacy name-keyed database.
+  local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo(unit)
+  if cast then
+    return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
   end
 
-  -- Compatibility path for environments without ClassicAPI cast support.
+  local channel, notInterruptible, channelSpellID, hasChannel
+  channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill,
+    notInterruptible, channelSpellID, hasChannel = API.GetChannelInfo(unit)
+  if channel then
+    return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
+  end
+
+  -- SuperWoW remains an optional GUID-keyed complement for remote casts.
+  -- Channels additionally require ClassicAPI's authoritative live state and
+  -- matching spellID, preventing a stale cached channel from becoming a ghost bar.
   if ShaguTweaks.superwow_active and not UnitIsUnit(unit, "player") then
-    local guid = API and API.UnitGUID and API.UnitGUID(unit)
+    local guid = API.UnitGUID and API.UnitGUID(unit)
     if guid then
-      local a, b, c, d, e, f, g, h = QueryLegacy(guid)
+      local a, b, c, d, e, f, g, h = QuerySuperWoW(guid, channelSpellID, hasChannel)
       if a then return a, b, c, d, e, f, g, h end
     end
   end
-
-  return QueryLegacy(unit)
 end
 
 local function UpdatePosition()
@@ -248,14 +220,6 @@ local function RefreshCast()
 end
 
 module.enable = function(self)
-  -- OnUpdate is now animation-only and runs only while the castbar is visible.
-  -- Cast discovery is driven by ClassicAPI's UNIT_SPELLCAST_* events instead
-  -- of querying the target's cast state on every rendered frame.
-  castbar:SetScript("OnUpdate", UpdateProgress)
-
-  local listener = CreateFrame("Frame")
-  listener:RegisterEvent("PLAYER_TARGET_CHANGED")
-
   local castEvents = {
     "UNIT_SPELLCAST_START",
     "UNIT_SPELLCAST_STOP",
@@ -267,14 +231,28 @@ module.enable = function(self)
     "UNIT_SPELLCAST_CHANNEL_UPDATE",
   }
 
-  local hasClassicCastEvents = false
-  if API and API.eventutils and _G.C_EventUtils and _G.C_EventUtils.IsEventValid then
-    for _, eventName in pairs(castEvents) do
-      if _G.C_EventUtils.IsEventValid(eventName) then
-        listener:RegisterEvent(eventName)
-        hasClassicCastEvents = true
-      end
+  -- ClassicAPI is a required dependency of this fork. Do not restore the old
+  -- permanent 20 Hz discovery poller when its cast/event surface is missing.
+  if not API or not API.casts or not API.eventutils
+    or not _G.C_EventUtils
+    or type(_G.C_EventUtils.IsEventValid) ~= "function" then
+    return
+  end
+
+  for index = 1, table.getn(castEvents) do
+    if not _G.C_EventUtils.IsEventValid(castEvents[index]) then
+      return
     end
+  end
+
+  -- Animation-only OnUpdate; hidden frames do not receive OnUpdate ticks.
+  castbar:SetScript("OnUpdate", UpdateProgress)
+
+  local listener = CreateFrame("Frame")
+  listener:RegisterEvent("PLAYER_TARGET_CHANGED")
+
+  for index = 1, table.getn(castEvents) do
+    listener:RegisterEvent(castEvents[index])
   end
 
   listener:SetScript("OnEvent", function()
@@ -289,19 +267,6 @@ module.enable = function(self)
       RefreshCast()
     end
   end)
-
-  if not hasClassicCastEvents then
-    -- Compatibility fallback for older ClassicAPI builds: discover state at
-    -- 20 Hz, while the bar itself still animates every frame when visible.
-    listener.elapsed = 0
-    listener:SetScript("OnUpdate", function()
-      this.elapsed = this.elapsed + arg1
-      if this.elapsed >= .05 then
-        this.elapsed = 0
-        RefreshCast()
-      end
-    end)
-  end
 
   RefreshCast()
 end
