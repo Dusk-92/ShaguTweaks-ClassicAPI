@@ -18,6 +18,29 @@ local function GetVendorPrice(id)
   end
 end
 
+-- Keep the historical public SellValueDB contract for addons such as Aux,
+-- without restoring the large embedded vendor-price database. Missing entries
+-- are resolved lazily through ClassicAPI and cached only after they are known.
+local sellValueDB = ShaguTweaks.SellValueDB
+if type(sellValueDB) ~= "table" then
+  sellValueDB = {}
+end
+
+setmetatable(sellValueDB, {
+  __index = function(tbl, itemID)
+    local price = GetVendorPrice(itemID)
+
+    -- The old embedded DB omitted unsellable 0-price items, so keep nil for
+    -- those entries instead of changing the historical SellValueDB contract.
+    if price and price > 0 then
+      rawset(tbl, itemID, price)
+      return price
+    end
+  end,
+})
+
+ShaguTweaks.SellValueDB = sellValueDB
+
 local pendingPrices = {}
 
 local function ClearPending(frame)
