@@ -11,8 +11,31 @@ local module = ShaguTweaks:register({
 module.enable = function(self)
     local _G = ShaguTweaks.GetGlobalEnv()
     local API = ShaguTweaks.API
-    local LegacyCastingInfo = ShaguTweaks.UnitCastingInfo
-    local LegacyChannelInfo = ShaguTweaks.UnitChannelInfo
+
+    local classicEvents = {
+        "UNIT_SPELLCAST_START",
+        "UNIT_SPELLCAST_STOP",
+        "UNIT_SPELLCAST_INTERRUPTED",
+        "UNIT_SPELLCAST_FAILED",
+        "UNIT_SPELLCAST_DELAYED",
+        "UNIT_SPELLCAST_CHANNEL_START",
+        "UNIT_SPELLCAST_CHANNEL_STOP",
+        "UNIT_SPELLCAST_CHANNEL_UPDATE",
+    }
+
+    -- ClassicAPI is a required dependency of this fork. Keep this module on
+    -- its native cast/query path instead of restoring the old 1.12 fallbacks.
+    if not API or not API.casts or not API.eventutils
+        or not _G.C_EventUtils
+        or type(_G.C_EventUtils.IsEventValid) ~= "function" then
+        return
+    end
+
+    for index = 1, table.getn(classicEvents) do
+        if not _G.C_EventUtils.IsEventValid(classicEvents[index]) then
+            return
+        end
+    end
 
     local castbar = CreateFrame("FRAME", "STImprovedCastbar", CastingBarFrame)
     castbar:Hide()
@@ -48,26 +71,13 @@ module.enable = function(self)
     CastingBarText:Hide()
 
     local function QueryPlayerCast()
-        if API and API.casts then
-            local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo("player")
-            if cast then
-                return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
-            end
-
-            local channel
-            channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo("player")
-            if channel then
-                return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
-            end
-        end
-
-        local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyCastingInfo("player")
+        local cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetCastInfo("player")
         if cast then
             return cast, nameSubtext, text, texture, startTime, endTime, isTradeSkill, false
         end
 
         local channel
-        channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = LegacyChannelInfo("player")
+        channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill = API.GetChannelInfo("player")
         if channel then
             return channel, nameSubtext, text, texture, startTime, endTime, isTradeSkill, true
         end
@@ -150,7 +160,7 @@ module.enable = function(self)
         UpdateTimer()
     end
 
-    -- The expensive cast/channel query now runs only on state-change events.
+    -- The cast/channel query runs only on ClassicAPI state-change events.
     -- While visible, OnUpdate only animates the remaining-time text and alpha.
     castbar.elapsed = 0
     castbar:SetScript("OnUpdate", function()
@@ -163,42 +173,8 @@ module.enable = function(self)
     local events = CreateFrame("Frame", nil, UIParent)
     events:RegisterEvent("PLAYER_ENTERING_WORLD")
 
-    local classicEvents = {
-        "UNIT_SPELLCAST_START",
-        "UNIT_SPELLCAST_STOP",
-        "UNIT_SPELLCAST_INTERRUPTED",
-        "UNIT_SPELLCAST_FAILED",
-        "UNIT_SPELLCAST_DELAYED",
-        "UNIT_SPELLCAST_CHANNEL_START",
-        "UNIT_SPELLCAST_CHANNEL_STOP",
-        "UNIT_SPELLCAST_CHANNEL_UPDATE",
-    }
-
-    local hasClassicEvents = API and API.eventutils and _G.C_EventUtils and _G.C_EventUtils.IsEventValid
-    if hasClassicEvents then
-        for index = 1, table.getn(classicEvents) do
-            if not _G.C_EventUtils.IsEventValid(classicEvents[index]) then
-                hasClassicEvents = false
-                break
-            end
-        end
-    end
-
-    if hasClassicEvents then
-        for index = 1, table.getn(classicEvents) do
-            events:RegisterEvent(classicEvents[index])
-        end
-    else
-        -- Compatibility with older ClassicAPI/plain 1.12: use the original
-        -- player spellcast events as state-change triggers, not as a poller.
-        events:RegisterEvent("SPELLCAST_START")
-        events:RegisterEvent("SPELLCAST_STOP")
-        events:RegisterEvent("SPELLCAST_FAILED")
-        events:RegisterEvent("SPELLCAST_INTERRUPTED")
-        events:RegisterEvent("SPELLCAST_DELAYED")
-        events:RegisterEvent("SPELLCAST_CHANNEL_START")
-        events:RegisterEvent("SPELLCAST_CHANNEL_STOP")
-        events:RegisterEvent("SPELLCAST_CHANNEL_UPDATE")
+    for index = 1, table.getn(classicEvents) do
+        events:RegisterEvent(classicEvents[index])
     end
 
     events:SetScript("OnEvent", function()
@@ -207,7 +183,7 @@ module.enable = function(self)
             return
         end
 
-        if hasClassicEvents and arg1 ~= "player" then return end
+        if arg1 ~= "player" then return end
         RefreshCast()
     end)
 end
