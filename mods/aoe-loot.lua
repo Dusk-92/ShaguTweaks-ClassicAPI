@@ -1,6 +1,7 @@
 -- Adapted from AoELoot by Sandrea / ChatGPT for ShaguTweaks-ClassicAPI.
 
 local T = ShaguTweaks.T
+local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["AoE Loot"],
@@ -11,15 +12,24 @@ local module = ShaguTweaks:register({
 })
 
 module.enable = function(self)
+  -- AoE Loot relies entirely on ClassicAPI's native corpse walker,
+  -- container classification and timer. Do not keep partial legacy behavior
+  -- when those capabilities are unavailable.
+  if not API or not API.aoeloot or not API.containeropenable or not API.timer then return end
+
   local frame = CreateFrame("Frame", "ShaguTweaksAoELoot")
   local pending = false
-  local releaseDeadline = 0
   local containerLootDeadline = 0
+  local takeoverGeneration = 0
+  local TAKEOVER_DELAY = 0.3
+
+  local function CancelTakeover()
+    takeoverGeneration = takeoverGeneration + 1
+    pending = false
+  end
 
   local function TrackContainerUse(bag, slot)
-    if not C_Container or not C_Container.IsContainerItemOpenable then return end
-
-    local isOpenable, canOpen = C_Container.IsContainerItemOpenable(bag, slot)
+    local isOpenable, canOpen = API.IsContainerItemOpenable(bag, slot)
     if isOpenable and canOpen then
       -- LOOT_OPENED is also fired by clams, lockboxes and similar bag items.
       -- Mark that session before UseContainerItem runs so it remains under the
@@ -39,97 +49,73 @@ module.enable = function(self)
 
   local function CanStartAoELoot()
     if IsMasterLootActive() then return false end
-    if not C_Loot or not C_Loot.LootAllCorpses then return false end
-
-    if C_Loot.IsScanInProgress and C_Loot.IsScanInProgress() then
-      return false
-    end
-
+    if API.IsLootScanInProgress() then return false end
     return true
   end
 
   local function HasNearbyLootableCorpse()
-    -- Older ClassicAPI builds may not expose the query yet. Keep AoE Loot
-    -- functional there; the container hook above still protects bag items.
-    if not C_Loot or not C_Loot.GetNearbyLootableUnits then return true end
-
-    local units = C_Loot.GetNearbyLootableUnits()
+    local units = API.GetNearbyLootableUnits()
     return type(units) == "table" and table.getn(units) > 0
   end
 
-  local function StartAoELoot()
-    -- Defer for one frame so the normal loot session can close cleanly.
-    frame:SetScript("OnUpdate", nil)
+  local function StartAoELoot(generation)
+    if generation ~= takeoverGeneration or not pending then return end
+
     pending = false
-    releaseDeadline = 0
-
     if CanStartAoELoot() then
-      C_Loot.LootAllCorpses()
+      API.LootAllCorpses()
     end
   end
 
-  local function QueueAoELoot()
-    releaseDeadline = 0
-    frame:SetScript("OnUpdate", StartAoELoot)
-  end
+  local function TakeOverLootSession()
+    -- AoE Loot owns corpse sessions while enabled. Close the normal client
+    -- window immediately so Vanilla autoloot, SuperAPI SetAutoloot modes and
+    -- quickloot-patched clients cannot keep control of the session.
+    takeoverGeneration = takeoverGeneration + 1
+    local generation = takeoverGeneration
+    pending = true
+    CloseLoot()
 
-  local function WaitForLootRelease()
-    -- Native Auto Loot can finish before this module receives LOOT_OPENED.
-    -- In that case LOOT_CLOSED has already passed, so use the empty session
-    -- as a fallback and queue the ClassicAPI walk on the following frame.
-    if pending and (not GetNumLootItems or GetNumLootItems() == 0) then
-      QueueAoELoot()
-    elseif pending and GetTime() >= releaseDeadline then
-      -- Never leave a per-frame waiter behind if the native loot session
-      -- cannot finish, for example because every inventory bag is full.
-      pending = false
-      releaseDeadline = 0
-      frame:SetScript("OnUpdate", nil)
-    end
+    -- Native autoloot may already have emitted loot packets before LOOT_OPENED
+    -- reaches Lua. ClassicAPI's own loot test uses the same 0.3s settling
+    -- window between loot operations; after it expires the native corpse walker
+    -- becomes the sole owner of all remaining nearby corpse loot.
+    C_Timer.After(TAKEOVER_DELAY, function()
+      StartAoELoot(generation)
+    end)
   end
 
   frame:RegisterEvent("LOOT_OPENED")
-  frame:RegisterEvent("LOOT_CLOSED")
 
   frame:SetScript("OnEvent", function()
-    if event == "LOOT_OPENED" then
-      -- Inventory containers use the same loot events as corpses. Let the
-      -- normal client finish them instead of closing their loot session.
-      if containerLootDeadline > 0 then
-        local isContainerLoot = GetTime() <= containerLootDeadline
-        containerLootDeadline = 0
-        if isContainerLoot then return end
-      end
+    if event ~= "LOOT_OPENED" then return end
 
-      -- The master looter must keep the normal window to inspect and assign loot.
-      if IsMasterLootActive() then
-        pending = false
-        releaseDeadline = 0
-        frame:SetScript("OnUpdate", nil)
+    -- Inventory containers use the same loot event as corpses. Let the normal
+    -- client finish them instead of treating them as an AoE-loot trigger.
+    if containerLootDeadline > 0 then
+      local isContainerLoot = GetTime() <= containerLootDeadline
+      containerLootDeadline = 0
+      if isContainerLoot then
+        CancelTakeover()
         return
       end
+    end
 
-      -- Chests, fishing nodes and other non-corpse sources also emit
-      -- LOOT_OPENED. AoE Loot only has work to do when ClassicAPI can actually
-      -- see at least one nearby lootable unit.
-      if not HasNearbyLootableCorpse() then return end
-
-      if pending or not CanStartAoELoot() then return end
-
-      pending = true
-      releaseDeadline = GetTime() + 3
-      frame:SetScript("OnUpdate", WaitForLootRelease)
-
-      -- Close the normal session so ClassicAPI can take over. The temporary
-      -- waiter also handles clients whose native Auto Loot already completed
-      -- and fired LOOT_CLOSED before this module received LOOT_OPENED.
-      CloseLoot()
-
+    -- The master looter must keep the normal window to inspect and assign loot.
+    if IsMasterLootActive() then
+      CancelTakeover()
       return
     end
 
-    if event == "LOOT_CLOSED" and pending then
-      QueueAoELoot()
-    end
+    -- Chests, fishing nodes and other non-corpse sources also emit LOOT_OPENED.
+    -- Only take over when ClassicAPI can see at least one nearby lootable unit.
+    if not HasNearbyLootableCorpse() then return end
+
+    -- A queued takeover already owns this interaction. ClassicAPI suppresses
+    -- its own LOOT_OPENED/LOOT_CLOSED events while walking corpses, so no
+    -- additional session needs to be stacked here.
+    if pending then return end
+
+    TakeOverLootSession()
   end)
 end
