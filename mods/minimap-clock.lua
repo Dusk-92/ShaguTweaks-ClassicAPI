@@ -1,5 +1,6 @@
 local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
+local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["MiniMap Clock"],
@@ -15,6 +16,7 @@ MinimapClock:SetFrameLevel(64)
 MinimapClock:SetPoint("BOTTOM", MinimapCluster, "BOTTOM", 8, 18)
 MinimapClock:SetWidth(50)
 MinimapClock:SetHeight(23)
+MinimapClock:SetClampedToScreen(true)
 MinimapClock:SetBackdrop({
   bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
   edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -155,6 +157,16 @@ module.enable = function(self)
   end
 
   local function resetposition()
+    -- Once the timer has been moved through Movable Unit Frames it has an
+    -- absolute saved position. Clearing that position restores the natural
+    -- Clock -> Timer relationship, so future clock moves carry it again.
+    local movedb = ShaguTweaks_config and ShaguTweaks_config["MoveUnitframes"]
+    if movedb then movedb["MinimapTimer"] = nil end
+
+    local state = ShaguTweaks.MovableUnitFramesState
+    if state and state.manual then state.manual.timer = false end
+    if state and state.dragging then state.dragging.timer = false end
+
     MinimapTimer:SetUserPlaced(false)
     MinimapTimer:ClearAllPoints()
     MinimapTimer:SetPoint("TOP", MinimapClock, "BOTTOM")
@@ -182,8 +194,11 @@ module.enable = function(self)
     GameTooltip:Hide()
   end)
 
+  -- Keep the timer independently movable when Movable Unit Frames is disabled.
+  -- With the mover enabled, its Ctrl+Shift mode temporarily owns these scripts
+  -- and restores them afterwards.
   MinimapTimer:SetScript("OnDragStart", function()
-    if IsShiftKeyDown() and IsControlKeyDown() then
+    if API.IsShiftKeyDown() and API.IsControlKeyDown() then
       this:StartMoving()
     end
   end)
@@ -203,7 +218,7 @@ module.enable = function(self)
         pausetimer()
       end
     elseif arg1 == "RightButton" then
-      if IsShiftKeyDown() and IsControlKeyDown() then
+      if API.IsShiftKeyDown() and API.IsControlKeyDown() then
         resettimer()
         MinimapTimer:Hide()
         resetposition()
