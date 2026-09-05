@@ -8,7 +8,7 @@ local API = ShaguTweaks.API
 
 local module = ShaguTweaks:register({
   title = T["Movable Unit Frames"],
-  description = T["Player, Target, Party, Minimap, Buffs, Weapon Buffs and Debuffs can be moved while <Shift> and <Ctrl> are pressed together."],
+  description = T["Player, Target, Party, Minimap, Clock, Timer, Buffs, Weapon Buffs and Debuffs can be moved while <Shift> and <Ctrl> are pressed together."],
   expansions = { ["vanilla"] = true },
   category = T["Unit Frames"],
   enabled = true,
