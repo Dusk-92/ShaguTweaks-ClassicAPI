@@ -67,8 +67,16 @@ module.enable = function(self)
     MinimapClock.text:SetText(date("%H:%M"))
   end
 
-  updateclock()
-  MinimapClock.ticker = C_Timer.NewTicker(1, updateclock)
+  local function scheduleclock()
+    updateclock()
+
+    -- Recalculate the next minute boundary every time so delayed callbacks,
+    -- alt-tab stalls or local clock adjustments cannot accumulate drift.
+    local seconds = tonumber(date("%S")) or 0
+    C_Timer.After(60 - seconds, scheduleclock)
+  end
+
+  scheduleclock()
 
   local timertext = MinimapTimer:CreateFontString(nil, "LOW", "GameFontNormal")
   timertext:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
