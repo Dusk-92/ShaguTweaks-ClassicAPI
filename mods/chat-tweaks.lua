@@ -26,7 +26,7 @@ local URLPattern = {
   IP       = { ["rx"]=" (%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)%s?",                       ["fm"]="%s.%s.%s.%s" },
   SHORTURL = { ["rx"]=" (%a+)%.(%a+)/(%S+)%s?",                                                    ["fm"]="%s.%s/%s" },
   URLIP    = { ["rx"]=" ([_A-Za-z0-9-]+)%.([_A-Za-z0-9-]+)%.(%S+)%:([_0-9-]+)%s?",               ["fm"]="%s.%s.%s:%s" },
-  URL      = { ["rx"]=" ([_A-Za-z0-9-]+)%.([_A-Za-z0-9-]+)%.(%S+)%s?",                            ["fm"]="%s.%s.%s" },
+  URL      = { ["rx"]=" ([_A-Za-z0-9-]+)%.([A-Za-z][A-Za-z]+)(%S*)%s?",                         ["fm"]="%s.%s%s" },
 }
 
 local function FormatLink(formatter,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
@@ -189,6 +189,96 @@ module.enable = function(self)
   end
 
   -- --------------------------------------------------------
+  -- ClassicAPI quest-link tooltip
+  -- --------------------------------------------------------
+  local QuestLog = _G.C_QuestLog
+  local EventUtils = _G.C_EventUtils
+  local hasQuestDetails = type(QuestLog) == "table"
+    and type(QuestLog.GetQuestDetails) == "function"
+  local canLoadQuest = hasQuestDetails
+    and type(QuestLog.RequestLoadQuestByID) == "function"
+    and type(EventUtils) == "table"
+    and type(EventUtils.IsEventValid) == "function"
+    and EventUtils.IsEventValid("QUEST_DATA_LOAD_RESULT")
+
+  local function CleanLinkText(text)
+    if not text then return end
+    text = string.gsub(text, "|c%x%x%x%x%x%x%x%x", "")
+    text = string.gsub(text, "|r", "")
+    text = string.gsub(text, "|H.-|h(.-)|h", "%1")
+    text = string.gsub(text, "^%[(.*)%]$", "%1")
+    return text
+  end
+
+  local function ShowQuestTooltip(owner, questID, fallbackTitle)
+    if not hasQuestDetails then return end
+
+    local details = QuestLog.GetQuestDetails(questID)
+    if not details then return end
+
+    local title = details.title
+    if not title or title == "" then
+      title = fallbackTitle or ("Quest " .. questID)
+    end
+
+    owner.ShaguTweaksQuestTooltip = true
+    GameTooltip:SetOwner(owner, "ANCHOR_CURSOR")
+    GameTooltip:ClearLines()
+    GameTooltip:AddLine(title, 1, .82, 0)
+
+    local info
+    if details.level and details.level > 0 then
+      info = (_G.LEVEL or "Level") .. " " .. details.level
+    end
+    if details.questType and details.questType ~= "" then
+      info = info and (info .. " - " .. details.questType) or details.questType
+    end
+    if info then
+      GameTooltip:AddLine(info, .8, .8, .8)
+    end
+
+    if details.objectives and details.objectives ~= "" then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine(details.objectives, 1, 1, 1, true)
+    end
+
+    GameTooltip:Show()
+    return true
+  end
+
+  if canLoadQuest and not self.questTooltipLoader then
+    self.questTooltipLoader = CreateFrame("Frame")
+  end
+  local questTooltipLoader = canLoadQuest and self.questTooltipLoader
+
+  local function ClearPendingQuest(owner)
+    if not questTooltipLoader then return end
+    if owner and questTooltipLoader.owner ~= owner then return end
+
+    questTooltipLoader:UnregisterEvent("QUEST_DATA_LOAD_RESULT")
+    questTooltipLoader.owner = nil
+    questTooltipLoader.questID = nil
+    questTooltipLoader.title = nil
+  end
+
+  if questTooltipLoader then
+    questTooltipLoader:SetScript("OnEvent", function()
+      if event ~= "QUEST_DATA_LOAD_RESULT" or tonumber(arg1) ~= this.questID then
+        return
+      end
+
+      local owner = this.owner
+      local questID = this.questID
+      local title = this.title
+      ClearPendingQuest()
+
+      if arg2 and owner and owner.ShaguTweaksQuestTooltip then
+        ShowQuestTooltip(owner, questID, title)
+      end
+    end)
+  end
+
+  -- --------------------------------------------------------
   -- Per-frame hooks: history + CLINK cleanup + URLs
   -- --------------------------------------------------------
   for i=1, NUM_CHAT_WINDOWS do
@@ -251,31 +341,64 @@ module.enable = function(self)
       local baseHyperlinkLeave = chatFrame:GetScript("OnHyperlinkLeave")
       local baseHyperlinkClick = chatFrame:GetScript("OnHyperlinkClick")
 
-      -- Add the item-link preview without discarding Turtle or addon handlers.
+      -- Add item and quest previews without discarding Turtle or addon handlers.
       chatFrame:SetScript("OnHyperlinkEnter", function()
         local _, _, linktype = string.find(arg1, "^(.-):(.+)$")
         if linktype == "item" then
+          ClearPendingQuest(this)
           this.ShaguTweaksItemTooltip = true
           GameTooltip:SetOwner(this, "ANCHOR_CURSOR")
           GameTooltip:SetHyperlink(arg1)
           GameTooltip:Show()
+        elseif linktype == "quest" and hasQuestDetails then
+          local _, _, questID = string.find(arg1, "^quest:(%d+)")
+          questID = tonumber(questID)
+
+          if questID then
+            local title = CleanLinkText(arg2)
+            ClearPendingQuest(this)
+
+            if ShowQuestTooltip(this, questID, title) then
+              return
+            end
+
+            if questTooltipLoader then
+              this.ShaguTweaksQuestTooltip = true
+              GameTooltip:SetOwner(this, "ANCHOR_CURSOR")
+              GameTooltip:ClearLines()
+              GameTooltip:AddLine(title or ("Quest " .. questID), 1, .82, 0)
+              GameTooltip:Show()
+
+              questTooltipLoader.owner = this
+              questTooltipLoader.questID = questID
+              questTooltipLoader.title = title
+              questTooltipLoader:RegisterEvent("QUEST_DATA_LOAD_RESULT")
+              QuestLog.RequestLoadQuestByID(questID)
+              return
+            end
+          end
+
+          if baseHyperlinkEnter then
+            baseHyperlinkEnter()
+          end
         elseif baseHyperlinkEnter then
           baseHyperlinkEnter()
         end
       end)
 
       chatFrame:SetScript("OnHyperlinkLeave", function()
-        if this.ShaguTweaksItemTooltip then
+        if this.ShaguTweaksItemTooltip or this.ShaguTweaksQuestTooltip then
           this.ShaguTweaksItemTooltip = nil
+          this.ShaguTweaksQuestTooltip = nil
+          ClearPendingQuest(this)
           GameTooltip:Hide()
         elseif baseHyperlinkLeave then
           baseHyperlinkLeave()
         end
       end)
 
-      -- Keep Chat Tweaks-specific actions local to the chat frame. All other
-      -- hyperlinks, including Turtle quest links, stay owned by the native
-      -- handler so their full tooltip data and difficulty colors are preserved.
+      -- Keep Chat Tweaks-specific actions local to the chat frame. Other
+      -- hyperlink types stay owned by the native Turtle/addon handler.
       chatFrame:SetScript("OnHyperlinkClick", function()
         local _, _, playerLink = string.find(arg1, "(player:.+)")
         if playerLink then
