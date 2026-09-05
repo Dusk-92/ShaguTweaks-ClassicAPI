@@ -1,3 +1,4 @@
+local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
 local API = ShaguTweaks.API
 
@@ -9,13 +10,21 @@ local module = ShaguTweaks:register({
   enabled = nil,
 })
 
-local professions = {
-  battlemaster = true,
-  taxi = true,
-  trainer = true,
-  vendor = true,
-  banker = true,
+-- ClassicAPI exposes Vanilla's native gossip option types as numeric icons.
+-- Keep the exact historical ShaguTweaks profession set: vendor, taxi, trainer,
+-- banker and battlemaster. Healer, binder, petition, tabard and auctioneer are
+-- intentionally not auto-selected here.
+local professionIcons = {
+  [1] = true, -- vendor
+  [2] = true, -- taxi
+  [3] = true, -- trainer
+  [6] = true, -- banker
+  [9] = true, -- battlemaster
 }
+
+local GOSSIP_ICON_GOSSIP = 0
+local GOSSIP_ICON_TRAINER = 3
+local GOSSIP_ICON_BINDER = 5
 
 local ignore = {
   ["Goblin Brainwashing Device"] = true,
@@ -62,6 +71,16 @@ for i = 1, table.getn(phrases) do
 end
 
 module.enable = function(self)
+  -- ClassicAPI is a required dependency of this fork. If the installed build
+  -- predates the native gossip surface, leave the module inactive rather than
+  -- restoring the old GetGossipOptions / SelectGossipOption compatibility path.
+  local GossipInfo = _G.C_GossipInfo
+  if type(GossipInfo) ~= "table"
+    or type(GossipInfo.GetOptions) ~= "function"
+    or type(GossipInfo.SelectOptionByIndex) ~= "function" then
+    return
+  end
+
   -- Reuse a single event frame so repeated enable() calls cannot stack gossip
   -- handlers and select the same option more than once.
   if not self.actions then
@@ -78,49 +97,56 @@ module.enable = function(self)
       return true
     end
 
-    local title, option1, _, option2, _, option3, _, option4, _, option5 = GetGossipOptions()
-    local rawTitle = title
+    local options = GossipInfo.GetOptions()
+    local optionCount = options and table.getn(options) or 0
+    if optionCount == 0 then return end
+
+    local first = options[1]
+    local rawTitle = first and first.name
 
     -- Ported from LazyPig: if a "binder" (innkeeper hearthstone) option is
     -- present and we are NOT currently at our bind point, don't auto-skip
-    -- anything in this menu at all.
-    local bind
-    if option1 == "binder" or option2 == "binder" or option3 == "binder"
-      or option4 == "binder" or option5 == "binder" then
-      bind = GetBindLocation()
+    -- anything in this menu at all. ClassicAPI lets us check every native
+    -- gossip slot instead of only the first five Vanilla Lua returns.
+    local hasBinder
+    for i = 1, optionCount do
+      local option = options[i]
+      if option and option.icon == GOSSIP_ICON_BINDER then
+        hasBinder = true
+        break
+      end
+    end
+
+    if hasBinder then
+      local bind = GetBindLocation()
       if not (bind == GetSubZoneText() or bind == GetZoneText()
         or bind == GetRealZoneText() or bind == GetMinimapZoneText()) then
         return
       end
     end
 
-    -- "title" is the text of the first gossip option. Keep this historical
-    -- LazyPig behavior, but normalize it once instead of once per option and
-    -- once per configured phrase.
-    local normalizedTitle = NormalizePhrase(title)
+    -- Preserve the historical LazyPig behavior: phrase matching is based on
+    -- the text of the first gossip option, not on each option independently.
+    local normalizedTitle = NormalizePhrase(rawTitle)
 
-    local function HandleOption(optionType, index)
-      if not optionType then return end
+    for i = 1, optionCount do
+      local option = options[i]
+      if option then
+        local optionType = option.icon
 
-      if optionType == "gossip" then
-        if normalizedTitle and normalizedPhrases[normalizedTitle] then
-          SelectGossipOption(index)
-          return true
+        if optionType == GOSSIP_ICON_GOSSIP then
+          if normalizedTitle and normalizedPhrases[normalizedTitle] then
+            GossipInfo.SelectOptionByIndex(option.orderIndex)
+            return
+          end
+        elseif optionType == GOSSIP_ICON_TRAINER and rawTitle == "Reset my talents." then
+          -- Never auto-confirm a talent reset; always require a manual click.
+        elseif professionIcons[optionType] then
+          GossipInfo.SelectOptionByIndex(option.orderIndex)
+          return
         end
-      elseif optionType == "trainer" and rawTitle == "Reset my talents." then
-        -- Never auto-confirm a talent reset; always require a manual click.
-        return
-      elseif professions[optionType] then
-        SelectGossipOption(index)
-        return true
       end
     end
-
-    if HandleOption(option1, 1) then return end
-    if HandleOption(option2, 2) then return end
-    if HandleOption(option3, 3) then return end
-    if HandleOption(option4, 4) then return end
-    HandleOption(option5, 5)
   end
 
   actions:RegisterEvent("GOSSIP_SHOW")
