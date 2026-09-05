@@ -162,29 +162,30 @@ module.enable = function(self)
   local realm  = GetRealmName()
   local player = UnitName("player")
 
-  local function SaveChatHistory(id, msg, r, g, b)
-    ShaguTweaks_cache = ShaguTweaks_cache or {}
-    ShaguTweaks_cache["chathistory"] = ShaguTweaks_cache["chathistory"] or {}
-    ShaguTweaks_cache["chathistory"][realm] = ShaguTweaks_cache["chathistory"][realm] or {}
-    ShaguTweaks_cache["chathistory"][realm][player] = ShaguTweaks_cache["chathistory"][realm][player] or {}
-    ShaguTweaks_cache["chathistory"][realm][player][id] = ShaguTweaks_cache["chathistory"][realm][player][id] or {}
-    if r and g and b then
-      local color = rgbhex(r*.5+.2, g*.5+.2, b*.5+.2)
-      msg = string.gsub(msg, "^", color)
-      msg = string.gsub(msg, "|r", "|r"..color)
-    end
-    local history = ShaguTweaks_cache["chathistory"][realm][player][id]
-    table.insert(history, 1, msg)
-    if history[30] then table.remove(history, 30) end
-  end
+  ShaguTweaks_cache = ShaguTweaks_cache or {}
+  ShaguTweaks_cache["chathistory"] = ShaguTweaks_cache["chathistory"] or {}
+  ShaguTweaks_cache["chathistory"][realm] = ShaguTweaks_cache["chathistory"][realm] or {}
+  ShaguTweaks_cache["chathistory"][realm][player] = ShaguTweaks_cache["chathistory"][realm][player] or {}
+  local playerHistory = ShaguTweaks_cache["chathistory"][realm][player]
 
   local function GetChatHistory(id)
-    ShaguTweaks_cache = ShaguTweaks_cache or {}
-    ShaguTweaks_cache["chathistory"] = ShaguTweaks_cache["chathistory"] or {}
-    ShaguTweaks_cache["chathistory"][realm] = ShaguTweaks_cache["chathistory"][realm] or {}
-    ShaguTweaks_cache["chathistory"][realm][player] = ShaguTweaks_cache["chathistory"][realm][player] or {}
-    ShaguTweaks_cache["chathistory"][realm][player][id] = ShaguTweaks_cache["chathistory"][realm][player][id] or {}
-    return ShaguTweaks_cache["chathistory"][realm][player][id]
+    if not playerHistory[id] then
+      playerHistory[id] = {}
+    end
+    return playerHistory[id]
+  end
+
+  local function SaveChatHistory(id, msg, r, g, b)
+    if r and g and b then
+      local color = rgbhex(r*.5+.2, g*.5+.2, b*.5+.2)
+      msg = color .. msg
+      if string.find(msg, "|r", 1, true) then
+        msg = string.gsub(msg, "|r", "|r"..color)
+      end
+    end
+    local history = GetChatHistory(id)
+    table.insert(history, 1, msg)
+    if history[30] then table.remove(history, 30) end
   end
 
   -- --------------------------------------------------------
@@ -213,23 +214,33 @@ module.enable = function(self)
       _G["ChatFrame"..i].AddMessage = function(frame, text, a1, a2, a3, a4, a5)
         if not text then return end
 
-        -- Remove prat/chatter CLINKs
-        text = gsub(text, "{CLINK:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:item:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:enchant:(%x+):([%d-]-):([^}]-)}", "|c%1|Henchant:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:spell:(%x+):([%d-]-):([^}]-)}", "|c%1|Hspell:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:quest:(%x+):([%d-]-):([%d-]-):([^}]-)}", "|c%1|Hquest:%2:%3|h[%4]|h|r")
-
-        -- Reduce channel number (e.g. [1. General] -> [1])
-        local channel = string.gsub(text, ".*%[(.-)%]%s+(.*|Hplayer).+", "%1")
-        if string.find(channel, "%d+%. ") then
-          channel = string.gsub(channel, "(%d+)%..*", "%1")
-          text = string.gsub(text, "%[%d+%..-%]%s+(.*|Hplayer)", "[" .. channel .. "] %1")
+        -- Remove prat/chatter CLINKs only when the marker is actually present.
+        if string.find(text, "{CLINK:", 1, true) then
+          text = gsub(text, "{CLINK:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:item:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:enchant:(%x+):([%d-]-):([^}]-)}", "|c%1|Henchant:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:spell:(%x+):([%d-]-):([^}]-)}", "|c%1|Hspell:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:quest:(%x+):([%d-]-):([%d-]-):([^}]-)}", "|c%1|Hquest:%2:%3|h[%4]|h|r")
         end
 
-        -- URL detection
-        text = HandleLink(text)
+        -- Reduce channel number (e.g. [1. General] -> [1]). This transform
+        -- can only match lines that already contain a player hyperlink.
+        if string.find(text, "|Hplayer", 1, true) then
+          local channel = string.gsub(text, ".*%[(.-)%]%s+(.*|Hplayer).+", "%1")
+          if string.find(channel, "%d+%. ") then
+            channel = string.gsub(channel, "(%d+)%..*", "%1")
+            text = string.gsub(text, "%[%d+%..-%]%s+(.*|Hplayer)", "[" .. channel .. "] %1")
+          end
+        end
+
+        -- Every supported URL form contains a dot, :// or @. Avoid running
+        -- all eight URL patterns on ordinary chat lines with none of them.
+        if string.find(text, ".", 1, true)
+          or string.find(text, "://", 1, true)
+          or string.find(text, "@", 1, true) then
+          text = HandleLink(text)
+        end
 
         SaveChatHistory(frame:GetID(), text, a1, a2, a3)
         frame:ShaguTweaksBaseAddMessage(text, a1, a2, a3, a4, a5)
