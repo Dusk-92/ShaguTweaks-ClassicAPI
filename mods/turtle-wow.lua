@@ -15,62 +15,61 @@ local module = ShaguTweaks:register({
 })
 
 module.enable = function(self)
-  if ShaguTweaks_config[T["MiniMap Clock"]] == 1 then
-    MinimapClock:SetScript("OnEnter", function()
-      -- read game time
-      local zh, zm = GetGameTime()
-      local sh, sm = zh, zm
+  -- Minimap Clock owns its tooltip script. Expose only Turtle's time conversion
+  -- so the clock can consume it dynamically regardless of module enable order.
+  ShaguTweaks.GetTurtleClockTimes = function()
+    local zh, zm = GetGameTime()
+    local sh, sm = zh, zm
 
-      -- convert custom zonetime to servertime
-      SetMapToCurrentZone()
-      if GetCurrentMapContinent() == 1 then
-        sh = sh + 12
-        sh = sh >= 24 and sh - 24 or sh
+    SetMapToCurrentZone()
+    if GetCurrentMapContinent() == 1 then
+      sh = sh + 12
+      sh = sh >= 24 and sh - 24 or sh
+    end
+
+    local servertime = string.format("%.2d:%.2d", sh, sm)
+    local zonetime = string.format("%.2d:%.2d", zh, zm)
+    return servertime, zonetime
+  end
+
+  -- Turtle changes WorldMapFrame_Maximize. Keep our compatibility wrapper
+  -- completely out of the way when a dedicated map addon owns the world map.
+  if not Cartographer and not METAMAP_TITLE then
+    local HookWorldMapFrame_Maximize = WorldMapFrame_Maximize
+    WorldMapFrame_Maximize = function()
+      -- run original function
+      HookWorldMapFrame_Maximize()
+
+      -- Re-apply only when WorldMap Window really initialized.
+      if ShaguTweaks.WorldMapWindowActive then
+        WorldMapFrame:SetMovable(true)
+        WorldMapFrame:EnableMouse(true)
+
+        WorldMapFrame:SetScale(.85)
+        WorldMapFrame:ClearAllPoints()
+        WorldMapFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 30)
+        WorldMapFrame:SetWidth(WorldMapButton:GetWidth() + 15)
+        WorldMapFrame:SetHeight(WorldMapButton:GetHeight() + 55)
+
+        -- overwrite wrong title position set by turtlewow
+        WorldMapFrameTitle:SetPoint("TOP", WorldMapFrame, 0, 17)
+
+        BlackoutWorld:Hide()
       end
+    end
 
-      -- format time to strings
-      local zonetime = string.format("%.2d:%.2d", zh, zm)
-      local servertime = string.format("%.2d:%.2d", sh, sm)
-      local time = date("%H:%M")
-
-      -- create the tooltip
-      GameTooltip:ClearLines()
-      GameTooltip:SetOwner(this, ANCHOR_BOTTOMLEFT)
-
-      GameTooltip:AddLine(T["Clock"])
-      GameTooltip:AddDoubleLine(T["Localtime"], time, 1,1,1,1,1,1)
-      GameTooltip:AddDoubleLine(T["Servertime"], servertime, 1,1,1,1,1,1)
-      GameTooltip:AddDoubleLine(T["Zonetime"], zonetime, 1,1,1,1,1,1)
-      GameTooltip:Show()
+    -- Trigger once after every module has handled PLAYER_ENTERING_WORLD. A
+    -- zero-delay ClassicAPI timer makes the result independent of event order.
+    local worldmapInit = CreateFrame("Frame")
+    worldmapInit:RegisterEvent("PLAYER_ENTERING_WORLD")
+    worldmapInit:SetScript("OnEvent", function()
+      this:UnregisterAllEvents()
+      this:Hide()
+      C_Timer.After(0, function()
+        WorldMapFrame_Maximize()
+      end)
     end)
   end
-
-  -- compatibility for turtle-wow's worldmap window
-  local HookWorldMapFrame_Maximize = WorldMapFrame_Maximize
-  WorldMapFrame_Maximize = function()
-    -- run original function
-    HookWorldMapFrame_Maximize()
-
-    -- re-apply worldmap window
-    if ShaguTweaks_config[T["WorldMap Window"]] == 1 then
-      WorldMapFrame:SetMovable(true)
-      WorldMapFrame:EnableMouse(true)
-
-      WorldMapFrame:SetScale(.85)
-      WorldMapFrame:ClearAllPoints()
-      WorldMapFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 30)
-      WorldMapFrame:SetWidth(WorldMapButton:GetWidth() + 15)
-      WorldMapFrame:SetHeight(WorldMapButton:GetHeight() + 55)
-
-      -- overwrite wrong title position set by turtlewow
-      WorldMapFrameTitle:SetPoint("TOP", WorldMapFrame, 0, 17)
-
-      BlackoutWorld:Hide()
-    end
-  end
-
-  -- trigger once to avoid graphical glitches
-  WorldMapFrame_Maximize()
 
   -- Vendor Values exposes a lazy ClassicAPI-backed SellValueDB compatibility
   -- table, so do not allocate a second Turtle-specific static price database.
