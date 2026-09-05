@@ -244,6 +244,8 @@ module.enable = function(self)
   local EventUtils = _G.C_EventUtils
   local hasQuestDetails = type(QuestLog) == "table"
     and type(QuestLog.GetQuestDetails) == "function"
+  local canCheckQuestStatus = hasQuestDetails
+    and type(QuestLog.IsOnQuest) == "function"
   local canLoadQuest = hasQuestDetails
     and type(QuestLog.RequestLoadQuestByID) == "function"
     and type(EventUtils) == "table"
@@ -274,6 +276,10 @@ module.enable = function(self)
     GameTooltip:SetOwner(owner, "ANCHOR_CURSOR")
     GameTooltip:ClearLines()
     GameTooltip:AddLine(title, 1, .82, 0)
+
+    if canCheckQuestStatus and QuestLog.IsOnQuest(questID) then
+      GameTooltip:AddLine("You are on this quest.", .2, 1, .2)
+    end
 
     local info
     if details.level and details.level > 0 then
@@ -487,7 +493,7 @@ module.enable = function(self)
   _G.CHAT_RAID_GET                = left.."R"..right   .. default
   _G.CHAT_RAID_LEADER_GET         = left.."RL"..right  .. default
   _G.CHAT_RAID_WARNING_GET        = left.."RW"..right  .. default
-  _G.CHAT_BATTLEGROUND_GET        = left.."BG"..right  .. default
+  _G.CHAT_BATTLEGROUND_GET        = left.."BG"..right   .. default
   _G.CHAT_BATTLEGROUND_LEADER_GET = left.."BL"..right  .. default
   _G.CHAT_SAY_GET                 = left.."S"..right   .. default
   _G.CHAT_YELL_GET                = left.."Y"..right   .. default
