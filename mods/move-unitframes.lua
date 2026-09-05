@@ -44,9 +44,13 @@ module.enable = function(self)
   sharedState.manual.buffs = movedb["BuffButton0"] ~= nil
   sharedState.manual.debuffs = movedb["BuffButton32"] ~= nil
   sharedState.manual.weapon = movedb["TempEnchant1"] ~= nil
+  sharedState.manual.clock = movedb["Clock"] ~= nil
+  sharedState.manual.timer = movedb["MinimapTimer"] ~= nil
   sharedState.dragging.buffs = false
   sharedState.dragging.debuffs = false
   sharedState.dragging.weapon = false
+  sharedState.dragging.clock = false
+  sharedState.dragging.timer = false
 
   local unlocked = false
   local states = {}
@@ -63,6 +67,8 @@ module.enable = function(self)
     { name = "PartyMemberFrame3", persist = true },
     { name = "PartyMemberFrame4", persist = true },
     { name = "Minimap", moveParent = true, persist = true, clamp = true },
+    { name = "MinimapClock", persist = true, clamp = true, manualGroup = "clock", suppressMouseDown = true },
+    { name = "MinimapTimer", persist = true, clamp = true, manualGroup = "timer" },
     { name = "BuffButton0", persist = true, manualGroup = "buffs", cursorDrag = true },
     { name = "BuffButton32", persist = true, manualGroup = "debuffs", cursorDrag = true },
     { name = "TempEnchant1", persist = true, manualGroup = "weapon", cursorDrag = true },
@@ -259,6 +265,10 @@ module.enable = function(self)
     state.moveFrame = moveFrame
     state.onDragStart = handle:GetScript("OnDragStart")
     state.onDragStop = handle:GetScript("OnDragStop")
+    if target.suppressMouseDown then
+      state.onMouseDown = handle:GetScript("OnMouseDown")
+      handle:SetScript("OnMouseDown", nil)
+    end
 
     if handle.IsMouseEnabled then
       state.mouseEnabled = handle:IsMouseEnabled() and true or false
@@ -362,6 +372,9 @@ module.enable = function(self)
     if handle then
       handle:SetScript("OnDragStart", state.onDragStart)
       handle:SetScript("OnDragStop", state.onDragStop)
+      if target.suppressMouseDown then
+        handle:SetScript("OnMouseDown", state.onMouseDown)
+      end
 
       if state.mouseEnabled ~= nil then
         handle:EnableMouse(state.mouseEnabled)
