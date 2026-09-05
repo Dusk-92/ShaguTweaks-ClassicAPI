@@ -29,6 +29,30 @@ local URLPattern = {
   URL      = { ["rx"]=" ([_A-Za-z0-9-]+)%.([A-Za-z][A-Za-z]+)(%S*)%s?",                         ["fm"]="%s.%s%s" },
 }
 
+-- Keep naked-domain detection conservative: explicit protocols and e-mail
+-- addresses keep their historical behavior, while plain domains are linked
+-- only when their final label is a known TLD. The list is built once at load.
+local KnownTLD = {}
+local KnownTLDList =
+  "ac ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bm bn bo bq br bs bt bv bw by bz " ..
+  "ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg eh er es et eu fi fj fk fm fo fr " ..
+  "ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp " ..
+  "ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz " ..
+  "na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st su sv sx sy sz " ..
+  "tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug uk us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw " ..
+  "aero app asia biz blog cat club cloud com coop dev digital edu email games game gov info int jobs link live media mil mobi museum name net news online org pro shop site social space store support tech tel top travel vip website wiki world xyz"
+for tld in string.gfind(KnownTLDList, "%S+") do
+  KnownTLD[tld] = true
+end
+KnownTLDList = nil
+
+local function IsKnownTLD(value)
+  if not value then return end
+  local _, _, tld = string.find(value, "^([A-Za-z][A-Za-z]+)")
+  if not tld then return end
+  return KnownTLD[string.lower(tld)]
+end
+
 local function FormatLink(formatter,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
   if not (formatter and a1) then return end
   local newtext = string.format(formatter,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
@@ -50,15 +74,40 @@ local function FormatLink(formatter,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
 end
 
 local URLFuncs = {
-  ["WWW"]      = function(a1,a2,a3)        return FormatLink(URLPattern.WWW.fm,a1,a2,a3) end,
+  ["WWW"]      = function(a1,a2,a3)        if IsKnownTLD(a3) then return FormatLink(URLPattern.WWW.fm,a1,a2,a3) end end,
   ["PROTOCOL"] = function(a1,a2)           return FormatLink(URLPattern.PROTOCOL.fm,a1,a2) end,
   ["EMAIL"]    = function(a1,a2,a3,a4)     return FormatLink(URLPattern.EMAIL.fm,a1,a2,a3,a4) end,
   ["PORTIP"]   = function(a1,a2,a3,a4,a5)  return FormatLink(URLPattern.PORTIP.fm,a1,a2,a3,a4,a5) end,
   ["IP"]       = function(a1,a2,a3,a4)     return FormatLink(URLPattern.IP.fm,a1,a2,a3,a4) end,
-  ["SHORTURL"] = function(a1,a2,a3)        return FormatLink(URLPattern.SHORTURL.fm,a1,a2,a3) end,
-  ["URLIP"]    = function(a1,a2,a3,a4)     return FormatLink(URLPattern.URLIP.fm,a1,a2,a3,a4) end,
-  ["URL"]      = function(a1,a2,a3)        return FormatLink(URLPattern.URL.fm,a1,a2,a3) end,
+  ["SHORTURL"] = function(a1,a2,a3)        if IsKnownTLD(a2) then return FormatLink(URLPattern.SHORTURL.fm,a1,a2,a3) end end,
+  ["URLIP"]    = function(a1,a2,a3,a4)     if IsKnownTLD(a3) then return FormatLink(URLPattern.URLIP.fm,a1,a2,a3,a4) end end,
+  ["URL"]      = function(a1,a2,a3)        if IsKnownTLD(a2) then return FormatLink(URLPattern.URL.fm,a1,a2,a3) end end,
 }
+
+local function MayContainURL(text)
+  if string.find(text, "://", 1, true) or string.find(text, "@", 1, true) then
+    return true
+  end
+
+  if not string.find(text, ".", 1, true) then
+    return false
+  end
+
+  -- Fast path for numeric IP-style candidates.
+  if string.find(text, "%d+%.%d+") then
+    return true
+  end
+
+  -- A normal sentence ending with punctuation should not run all URL regexes.
+  -- Only dotted alphabetic labels with a known TLD qualify as a candidate.
+  for tld in string.gfind(text, "%.([A-Za-z][A-Za-z]+)") do
+    if KnownTLD[string.lower(tld)] then
+      return true
+    end
+  end
+
+  return false
+end
 
 local function HandleLink(text)
   text = string.gsub(text, URLPattern.WWW.rx,      URLFuncs.WWW)
@@ -324,11 +373,8 @@ module.enable = function(self)
           end
         end
 
-        -- Every supported URL form contains a dot, :// or @. Avoid running
-        -- all eight URL patterns on ordinary chat lines with none of them.
-        if string.find(text, ".", 1, true)
-          or string.find(text, "://", 1, true)
-          or string.find(text, "@", 1, true) then
+        -- Skip all expensive URL patterns unless a real candidate is present.
+        if MayContainURL(text) then
           text = HandleLink(text)
         end
 
