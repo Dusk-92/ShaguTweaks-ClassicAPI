@@ -44,6 +44,34 @@ local inspectSlots = {
   "MainHandSlot", "SecondaryHandSlot", "RangedSlot", "TabardSlot",
 }
 
+-- These option/color tables are immutable and reused across refreshes. Item
+-- frames can update very frequently on 1.12, so avoid creating short-lived
+-- Lua tables for every visible slot on every event.
+local emptyOptions = {}
+local defaultColor = { r = .5, g = .5, b = .46 }
+local equipmentOptions = {
+  default = { r = .5, g = .5, b = .5 },
+  borderMin = 0,
+  glowMin = 2,
+}
+local bagOptions = { borderMin = 0, glowMin = 2 }
+local bankOptions = { borderMin = 2, glowMin = 2 }
+local weaponOptions = {
+  default = { r = .2, g = .2, b = .2 },
+  borderMin = 0,
+  glowMin = 2,
+}
+local transparentOptions = { borderMin = 2, glowMin = 2, defaultAlpha = 0 }
+local icon14Options = {
+  borderInset = 2, glowInset = 14, borderMin = 2, glowMin = 2,
+  defaultAlpha = 0,
+}
+local icon12Options = {
+  borderInset = 2, glowInset = 12, borderMin = 2, glowMin = 2,
+  defaultAlpha = 0,
+}
+local lootOptions = { borderMin = 1, glowMin = 2, defaultAlpha = 0 }
+
 local function Quality(itemID)
   if not itemID then return end
   return API.GetItemQualityByID(itemID)
@@ -51,8 +79,8 @@ end
 
 local function IsQuestItem(itemID)
   if not itemID then return false end
-  local _, _, _, _, _, itemType = API.GetItemInfo(itemID)
-  return itemType == "Quest"
+  local _, _, _, _, _, classID = API.GetItemInfoInstant(itemID)
+  return classID == 12
 end
 
 local function NormalizeInsets(inset)
@@ -84,9 +112,9 @@ end
 
 local function SetVisualColor(button, itemID, opts)
   if not button then return end
-  opts = opts or {}
+  opts = opts or emptyOptions
 
-  local default = opts.default or { r = .5, g = .5, b = .46 }
+  local default = opts.default or defaultColor
   local quality = Quality(itemID)
   local quest = opts.quest ~= false and IsQuestItem(itemID)
   local r, g, b
@@ -157,11 +185,7 @@ function Engine:Install()
     for slotID, slotName in pairs(paperdollSlots) do
       local button = _G["Character" .. slotName]
       if button then
-        SetVisualColor(button, API.GetInventoryItemID("player", slotID), {
-          default = { r = .5, g = .5, b = .5 },
-          borderMin = 0,
-          glowMin = 2,
-        })
+        SetVisualColor(button, API.GetInventoryItemID("player", slotID), equipmentOptions)
       end
     end
   end
@@ -170,11 +194,7 @@ function Engine:Install()
     for slotID, slotName in pairs(inspectSlots) do
       local button = _G["Inspect" .. slotName]
       if button then
-        SetVisualColor(button, API.GetInventoryItemID("target", slotID), {
-          default = { r = .5, g = .5, b = .5 },
-          borderMin = 0,
-          glowMin = 2,
-        })
+        SetVisualColor(button, API.GetInventoryItemID("target", slotID), equipmentOptions)
       end
     end
   end
@@ -190,10 +210,7 @@ function Engine:Install()
           for slot = 1, MAX_CONTAINER_ITEMS do
             local button = _G[name .. "Item" .. slot]
             if button and button:IsShown() then
-              SetVisualColor(button, API.GetContainerItemID(id, button:GetID()), {
-                borderMin = 0,
-                glowMin = 2,
-              })
+              SetVisualColor(button, API.GetContainerItemID(id, button:GetID()), bagOptions)
             end
           end
         end
@@ -204,10 +221,7 @@ function Engine:Install()
       local button = _G["CharacterBag" .. bag .. "Slot"]
       if button then
         local inventorySlot = bag + 20
-        SetVisualColor(button, API.GetInventoryItemID("player", inventorySlot), {
-          borderMin = 0,
-          glowMin = 2,
-        })
+        SetVisualColor(button, API.GetInventoryItemID("player", inventorySlot), bagOptions)
       end
     end
   end
@@ -216,10 +230,7 @@ function Engine:Install()
     for slot = 1, 28 do
       local button = _G["BankFrameItem" .. slot]
       if button then
-        SetVisualColor(button, API.GetContainerItemID(-1, slot), {
-          borderMin = 2,
-          glowMin = 2,
-        })
+        SetVisualColor(button, API.GetContainerItemID(-1, slot), bankOptions)
       end
     end
   end
@@ -227,14 +238,8 @@ function Engine:Install()
   local function RefreshWeapons()
     local mainID = API.GetInventoryItemID("player", TempEnchant1:GetID())
     local offID = API.GetInventoryItemID("player", TempEnchant2:GetID())
-    SetVisualColor(TempEnchant1, mainID, {
-      default = { r = .2, g = .2, b = .2 },
-      borderMin = 0, glowMin = 2,
-    })
-    SetVisualColor(TempEnchant2, offID, {
-      default = { r = .2, g = .2, b = .2 },
-      borderMin = 0, glowMin = 2,
-    })
+    SetVisualColor(TempEnchant1, mainID, weaponOptions)
+    SetVisualColor(TempEnchant2, offID, weaponOptions)
     if TempEnchant1Border then TempEnchant1Border:SetAlpha(0) end
     if TempEnchant2Border then TempEnchant2Border:SetAlpha(0) end
   end
@@ -253,7 +258,7 @@ function Engine:Install()
           local index = startIndex + i - 1
           local itemID
           if index <= GetMerchantNumItems() then itemID = API.GetMerchantItemID(index) end
-          SetVisualColor(button, itemID, { borderMin = 2, glowMin = 2, defaultAlpha = 0 })
+          SetVisualColor(button, itemID, transparentOptions)
         end
       end
 
@@ -261,16 +266,14 @@ function Engine:Install()
       if buybackButton then
         local count = GetNumBuybackItems()
         local itemID = count > 0 and API.GetBuybackItemID(count) or nil
-        SetVisualColor(buybackButton, itemID, { borderMin = 2, glowMin = 2, defaultAlpha = 0 })
+        SetVisualColor(buybackButton, itemID, transparentOptions)
       end
     else
       local perPage = MERCHANT_ITEMS_PER_PAGE or 10
       for i = 1, perPage do
         local button = _G["MerchantItem" .. i .. "ItemButton"]
         if button then
-          SetVisualColor(button, API.GetBuybackItemID(i), {
-            borderMin = 2, glowMin = 2, defaultAlpha = 0,
-          })
+          SetVisualColor(button, API.GetBuybackItemID(i), transparentOptions)
         end
       end
     end
@@ -290,19 +293,13 @@ function Engine:Install()
       local detail = _G["QuestDetailItem" .. i]
       local detailIcon = _G["QuestDetailItem" .. i .. "IconTexture"]
       if detail and detailIcon then
-        ApplyIconButton(detail, detailIcon, itemID, {
-          borderInset = 2, glowInset = 14, borderMin = 2, glowMin = 2,
-          defaultAlpha = 0,
-        })
+        ApplyIconButton(detail, detailIcon, itemID, icon14Options)
       end
 
       local reward = _G["QuestRewardItem" .. i]
       local rewardIcon = _G["QuestRewardItem" .. i .. "IconTexture"]
       if reward and rewardIcon then
-        ApplyIconButton(reward, rewardIcon, itemID, {
-          borderInset = 2, glowInset = 14, borderMin = 2, glowMin = 2,
-          defaultAlpha = 0,
-        })
+        ApplyIconButton(reward, rewardIcon, itemID, icon14Options)
       end
     end
   end
@@ -315,10 +312,7 @@ function Engine:Install()
       local button = _G["QuestLogItem" .. i]
       local icon = _G["QuestLogItem" .. i .. "IconTexture"]
       if button and icon then
-        ApplyIconButton(button, icon, itemID, {
-          borderInset = 2, glowInset = 14, borderMin = 2, glowMin = 2,
-          defaultAlpha = 0,
-        })
+        ApplyIconButton(button, icon, itemID, icon14Options)
       end
     end
   end
@@ -342,13 +336,7 @@ function Engine:Install()
         end
 
         if button and icon then
-          ApplyIconButton(button, icon, itemID, {
-            borderInset = 2,
-            glowInset = 12,
-            borderMin = 2,
-            glowMin = 2,
-            defaultAlpha = 0,
-          })
+          ApplyIconButton(button, icon, itemID, icon12Options)
         end
       end
     end
@@ -358,9 +346,7 @@ function Engine:Install()
     if openButton then
       local mailID = InboxFrame and InboxFrame.openMailID
       local itemID = mailID and mailID > 0 and API.GetInboxItemID(mailID) or nil
-      SetVisualColor(openButton, itemID, {
-        borderMin = 2, glowMin = 2, defaultAlpha = 0,
-      })
+      SetVisualColor(openButton, itemID, transparentOptions)
     end
   end
 
@@ -369,14 +355,10 @@ function Engine:Install()
       local player = _G["TradePlayerItem" .. i .. "ItemButton"]
       local target = _G["TradeRecipientItem" .. i .. "ItemButton"]
       if player then
-        SetVisualColor(player, API.GetTradePlayerItemID(i), {
-          borderMin = 2, glowMin = 2, defaultAlpha = 0,
-        })
+        SetVisualColor(player, API.GetTradePlayerItemID(i), transparentOptions)
       end
       if target then
-        SetVisualColor(target, API.GetTradeTargetItemID(i), {
-          borderMin = 2, glowMin = 2, defaultAlpha = 0,
-        })
+        SetVisualColor(target, API.GetTradeTargetItemID(i), transparentOptions)
       end
     end
   end
@@ -388,9 +370,7 @@ function Engine:Install()
 
     local output = _G.TradeSkillSkillIcon
     if output then
-      SetVisualColor(output, API.GetTradeSkillItemID(id), {
-        borderMin = 2, glowMin = 2, defaultAlpha = 0,
-      })
+      SetVisualColor(output, API.GetTradeSkillItemID(id), transparentOptions)
     end
 
     local num = GetTradeSkillNumReagents(id) or 0
@@ -398,10 +378,7 @@ function Engine:Install()
       local button = _G["TradeSkillReagent" .. i]
       local icon = _G["TradeSkillReagent" .. i .. "IconTexture"]
       if button and icon then
-        ApplyIconButton(button, icon, API.GetTradeSkillReagentItemID(id, i), {
-          borderInset = 2, glowInset = 12, borderMin = 2, glowMin = 2,
-          defaultAlpha = 0,
-        })
+        ApplyIconButton(button, icon, API.GetTradeSkillReagentItemID(id, i), icon12Options)
       end
     end
   end
@@ -416,9 +393,7 @@ function Engine:Install()
       local name = GetCraftInfo(id)
       local link = name and ShaguTweaks.GetItemLinkByName and ShaguTweaks.GetItemLinkByName(name)
       local itemID = link and API.GetItemIDFromLink(link)
-      SetVisualColor(output, itemID, {
-        borderMin = 2, glowMin = 2, defaultAlpha = 0,
-      })
+      SetVisualColor(output, itemID, transparentOptions)
     end
 
     local num = GetCraftNumReagents(id) or 0
@@ -426,10 +401,7 @@ function Engine:Install()
       local button = _G["CraftReagent" .. i]
       local icon = _G["CraftReagent" .. i .. "IconTexture"]
       if button and icon then
-        ApplyIconButton(button, icon, API.GetCraftReagentItemID(id, i), {
-          borderInset = 2, glowInset = 12, borderMin = 2, glowMin = 2,
-          defaultAlpha = 0,
-        })
+        ApplyIconButton(button, icon, API.GetCraftReagentItemID(id, i), icon12Options)
       end
     end
   end
@@ -446,9 +418,7 @@ function Engine:Install()
       local slot = startSlot + buttonIndex - 1
       local itemID = slot <= numLoot and API.GetLootSlotItemID(slot) or nil
       if button then
-        SetVisualColor(button, itemID, {
-          borderMin = 1, glowMin = 2, defaultAlpha = 0,
-        })
+        SetVisualColor(button, itemID, lootOptions)
       end
     end
   end
@@ -547,7 +517,7 @@ function Engine:Install()
     if event == "LOOT_CLOSED" then
       for i = 1, 4 do
         local button = _G["LootButton" .. i]
-        if button then SetVisualColor(button, nil, { borderMin = 1, glowMin = 2, defaultAlpha = 0 }) end
+        if button then SetVisualColor(button, nil, lootOptions) end
       end
     else
       ShaguTweaks.QueueFunction(RefreshLoot)
