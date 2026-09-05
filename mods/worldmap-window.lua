@@ -19,20 +19,9 @@ local function AddSpecialFrame(name)
 end
 
 module.enable = function(self)
-  AddSpecialFrame("WorldMapFrame")
-
-  -- Window mode requires a direct Show/Hide toggle instead of the stock
-  -- full-screen panel toggle. Install it once when this module is enabled.
-  if not self.toggleInstalled then
-    self.toggleInstalled = true
-    function _G.ToggleWorldMap()
-      if WorldMapFrame:IsShown() then
-        WorldMapFrame:Hide()
-      else
-        WorldMapFrame:Show()
-      end
-    end
-  end
+  -- Only advertise the window as active after the delayed compatibility check.
+  -- Turtle WoW consumes this flag instead of looking at config alone.
+  ShaguTweaks.WorldMapWindowActive = nil
 
   -- Reuse one initialization frame so repeated enable() calls cannot stack
   -- PLAYER_ENTERING_WORLD handlers or duplicate WorldMapFrame hooks.
@@ -43,11 +32,29 @@ module.enable = function(self)
   local delay = self.delay
   delay:RegisterEvent("PLAYER_ENTERING_WORLD")
   delay:SetScript("OnEvent", function()
-    -- Do not interfere with dedicated map addons.
+    -- Do not touch the stock world-map controls at all when a dedicated map
+    -- addon owns them. Run this before replacing ToggleWorldMap or adding hooks.
     if Cartographer or METAMAP_TITLE then
+      ShaguTweaks.WorldMapWindowActive = nil
       this:UnregisterAllEvents()
       this:Hide()
       return
+    end
+
+    ShaguTweaks.WorldMapWindowActive = true
+    AddSpecialFrame("WorldMapFrame")
+
+    -- Window mode requires a direct Show/Hide toggle instead of the stock
+    -- full-screen panel toggle. Install it only after the compatibility check.
+    if not self.toggleInstalled then
+      self.toggleInstalled = true
+      function _G.ToggleWorldMap()
+        if WorldMapFrame:IsShown() then
+          WorldMapFrame:Hide()
+        else
+          WorldMapFrame:Show()
+        end
+      end
     end
 
     UIPanelWindows["WorldMapFrame"] = { area = "center" }

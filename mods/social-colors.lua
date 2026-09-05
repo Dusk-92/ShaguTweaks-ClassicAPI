@@ -2,6 +2,7 @@ local _G = ShaguTweaks.GetGlobalEnv()
 local T = ShaguTweaks.T
 local L = ShaguTweaks.L
 local gfind = string.gmatch or string.gfind
+local strfind = string.find
 local GetUnitData = ShaguTweaks.GetUnitData
 local GetPlayerCache = ShaguTweaks.GetPlayerCache
 local hooksecurefunc = ShaguTweaks.hooksecurefunc
@@ -119,7 +120,7 @@ end
 local classHex = {}
 
 local function GetPlayerNameFromLink(payload)
-  local colon = string.find(payload, ":")
+  local colon = strfind(payload, ":")
   if colon then
     return string.sub(payload, 1, colon - 1)
   end
@@ -128,6 +129,7 @@ end
 
 local function ColorPlayerLinks(text)
   if not text then return text end
+  if not strfind(text, "|Hplayer:", 1, true) then return text end
 
   for name in gfind(text, "|Hplayer:(.-)|h") do
     -- Player hyperlinks may contain Turtle metadata after the real name. Avoid

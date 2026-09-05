@@ -187,6 +187,13 @@ module.enable = function(self)
   MinimapClock:SetScript("OnEnter", function()
     local h, m = GetGameTime()
     local servertime = string.format("%.2d:%.2d", h, m)
+    local zonetime
+    local turtleClock = ShaguTweaks.GetTurtleClockTimes
+
+    if turtleClock then
+      servertime, zonetime = turtleClock()
+    end
+
     local time = date("%H:%M")
 
     GameTooltip:ClearLines()
@@ -195,6 +202,9 @@ module.enable = function(self)
     GameTooltip:AddLine(T["Clock"])
     GameTooltip:AddDoubleLine(T["Localtime"], time, 1,1,1,1,1,1)
     GameTooltip:AddDoubleLine(T["Servertime"], servertime, 1,1,1,1,1,1)
+    if zonetime then
+      GameTooltip:AddDoubleLine(T["Zonetime"], zonetime, 1,1,1,1,1,1)
+    end
     GameTooltip:Show()
   end)
 
