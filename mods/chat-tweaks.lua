@@ -26,8 +26,32 @@ local URLPattern = {
   IP       = { ["rx"]=" (%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)%s?",                       ["fm"]="%s.%s.%s.%s" },
   SHORTURL = { ["rx"]=" (%a+)%.(%a+)/(%S+)%s?",                                                    ["fm"]="%s.%s/%s" },
   URLIP    = { ["rx"]=" ([_A-Za-z0-9-]+)%.([_A-Za-z0-9-]+)%.(%S+)%:([_0-9-]+)%s?",               ["fm"]="%s.%s.%s:%s" },
-  URL      = { ["rx"]=" ([_A-Za-z0-9-]+)%.([_A-Za-z0-9-]+)%.(%S+)%s?",                            ["fm"]="%s.%s.%s" },
+  URL      = { ["rx"]=" ([_A-Za-z0-9-]+)%.([A-Za-z][A-Za-z]+)(%S*)%s?",                         ["fm"]="%s.%s%s" },
 }
+
+-- Keep naked-domain detection conservative: explicit protocols and e-mail
+-- addresses keep their historical behavior, while plain domains are linked
+-- only when their final label is a known TLD. The list is built once at load.
+local KnownTLD = {}
+local KnownTLDList =
+  "ac ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bm bn bo bq br bs bt bv bw by bz " ..
+  "ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg eh er es et eu fi fj fk fm fo fr " ..
+  "ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp " ..
+  "ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz " ..
+  "na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st su sv sx sy sz " ..
+  "tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug uk us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw " ..
+  "aero app asia biz blog cat club cloud com coop dev digital edu email games game gov info int jobs link live media mil mobi museum name net news online org pro shop site social space store support tech tel top travel vip website wiki world xyz"
+for tld in string.gfind(KnownTLDList, "%S+") do
+  KnownTLD[tld] = true
+end
+KnownTLDList = nil
+
+local function IsKnownTLD(value)
+  if not value then return end
+  local _, _, tld = string.find(value, "^([A-Za-z][A-Za-z]+)")
+  if not tld then return end
+  return KnownTLD[string.lower(tld)]
+end
 
 local function FormatLink(formatter,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
   if not (formatter and a1) then return end
@@ -50,15 +74,40 @@ local function FormatLink(formatter,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
 end
 
 local URLFuncs = {
-  ["WWW"]      = function(a1,a2,a3)        return FormatLink(URLPattern.WWW.fm,a1,a2,a3) end,
+  ["WWW"]      = function(a1,a2,a3)        if IsKnownTLD(a3) then return FormatLink(URLPattern.WWW.fm,a1,a2,a3) end end,
   ["PROTOCOL"] = function(a1,a2)           return FormatLink(URLPattern.PROTOCOL.fm,a1,a2) end,
   ["EMAIL"]    = function(a1,a2,a3,a4)     return FormatLink(URLPattern.EMAIL.fm,a1,a2,a3,a4) end,
   ["PORTIP"]   = function(a1,a2,a3,a4,a5)  return FormatLink(URLPattern.PORTIP.fm,a1,a2,a3,a4,a5) end,
   ["IP"]       = function(a1,a2,a3,a4)     return FormatLink(URLPattern.IP.fm,a1,a2,a3,a4) end,
-  ["SHORTURL"] = function(a1,a2,a3)        return FormatLink(URLPattern.SHORTURL.fm,a1,a2,a3) end,
-  ["URLIP"]    = function(a1,a2,a3,a4)     return FormatLink(URLPattern.URLIP.fm,a1,a2,a3,a4) end,
-  ["URL"]      = function(a1,a2,a3)        return FormatLink(URLPattern.URL.fm,a1,a2,a3) end,
+  ["SHORTURL"] = function(a1,a2,a3)        if IsKnownTLD(a2) then return FormatLink(URLPattern.SHORTURL.fm,a1,a2,a3) end end,
+  ["URLIP"]    = function(a1,a2,a3,a4)     if IsKnownTLD(a3) then return FormatLink(URLPattern.URLIP.fm,a1,a2,a3,a4) end end,
+  ["URL"]      = function(a1,a2,a3)        if IsKnownTLD(a2) then return FormatLink(URLPattern.URL.fm,a1,a2,a3) end end,
 }
+
+local function MayContainURL(text)
+  if string.find(text, "://", 1, true) or string.find(text, "@", 1, true) then
+    return true
+  end
+
+  if not string.find(text, ".", 1, true) then
+    return false
+  end
+
+  -- Fast path for numeric IP-style candidates.
+  if string.find(text, "%d+%.%d+") then
+    return true
+  end
+
+  -- A normal sentence ending with punctuation should not run all URL regexes.
+  -- Only dotted alphabetic labels with a known TLD qualify as a candidate.
+  for tld in string.gfind(text, "%.([A-Za-z][A-Za-z]+)") do
+    if KnownTLD[string.lower(tld)] then
+      return true
+    end
+  end
+
+  return false
+end
 
 local function HandleLink(text)
   text = string.gsub(text, URLPattern.WWW.rx,      URLFuncs.WWW)
@@ -162,29 +211,126 @@ module.enable = function(self)
   local realm  = GetRealmName()
   local player = UnitName("player")
 
+  ShaguTweaks_cache = ShaguTweaks_cache or {}
+  ShaguTweaks_cache["chathistory"] = ShaguTweaks_cache["chathistory"] or {}
+  ShaguTweaks_cache["chathistory"][realm] = ShaguTweaks_cache["chathistory"][realm] or {}
+  ShaguTweaks_cache["chathistory"][realm][player] = ShaguTweaks_cache["chathistory"][realm][player] or {}
+  local playerHistory = ShaguTweaks_cache["chathistory"][realm][player]
+
+  local function GetChatHistory(id)
+    if not playerHistory[id] then
+      playerHistory[id] = {}
+    end
+    return playerHistory[id]
+  end
+
   local function SaveChatHistory(id, msg, r, g, b)
-    ShaguTweaks_cache = ShaguTweaks_cache or {}
-    ShaguTweaks_cache["chathistory"] = ShaguTweaks_cache["chathistory"] or {}
-    ShaguTweaks_cache["chathistory"][realm] = ShaguTweaks_cache["chathistory"][realm] or {}
-    ShaguTweaks_cache["chathistory"][realm][player] = ShaguTweaks_cache["chathistory"][realm][player] or {}
-    ShaguTweaks_cache["chathistory"][realm][player][id] = ShaguTweaks_cache["chathistory"][realm][player][id] or {}
     if r and g and b then
       local color = rgbhex(r*.5+.2, g*.5+.2, b*.5+.2)
-      msg = string.gsub(msg, "^", color)
-      msg = string.gsub(msg, "|r", "|r"..color)
+      msg = color .. msg
+      if string.find(msg, "|r", 1, true) then
+        msg = string.gsub(msg, "|r", "|r"..color)
+      end
     end
-    local history = ShaguTweaks_cache["chathistory"][realm][player][id]
+    local history = GetChatHistory(id)
     table.insert(history, 1, msg)
     if history[30] then table.remove(history, 30) end
   end
 
-  local function GetChatHistory(id)
-    ShaguTweaks_cache = ShaguTweaks_cache or {}
-    ShaguTweaks_cache["chathistory"] = ShaguTweaks_cache["chathistory"] or {}
-    ShaguTweaks_cache["chathistory"][realm] = ShaguTweaks_cache["chathistory"][realm] or {}
-    ShaguTweaks_cache["chathistory"][realm][player] = ShaguTweaks_cache["chathistory"][realm][player] or {}
-    ShaguTweaks_cache["chathistory"][realm][player][id] = ShaguTweaks_cache["chathistory"][realm][player][id] or {}
-    return ShaguTweaks_cache["chathistory"][realm][player][id]
+  -- --------------------------------------------------------
+  -- ClassicAPI quest-link tooltip
+  -- --------------------------------------------------------
+  local QuestLog = _G.C_QuestLog
+  local EventUtils = _G.C_EventUtils
+  local hasQuestDetails = type(QuestLog) == "table"
+    and type(QuestLog.GetQuestDetails) == "function"
+  local canCheckQuestStatus = hasQuestDetails
+    and type(QuestLog.IsOnQuest) == "function"
+  local canLoadQuest = hasQuestDetails
+    and type(QuestLog.RequestLoadQuestByID) == "function"
+    and type(EventUtils) == "table"
+    and type(EventUtils.IsEventValid) == "function"
+    and EventUtils.IsEventValid("QUEST_DATA_LOAD_RESULT")
+
+  local function CleanLinkText(text)
+    if not text then return end
+    text = string.gsub(text, "|c%x%x%x%x%x%x%x%x", "")
+    text = string.gsub(text, "|r", "")
+    text = string.gsub(text, "|H.-|h(.-)|h", "%1")
+    text = string.gsub(text, "^%[(.*)%]$", "%1")
+    return text
+  end
+
+  local function ShowQuestTooltip(owner, questID, fallbackTitle)
+    if not hasQuestDetails then return end
+
+    local details = QuestLog.GetQuestDetails(questID)
+    if not details then return end
+
+    local title = details.title
+    if not title or title == "" then
+      title = fallbackTitle or ("Quest " .. questID)
+    end
+
+    owner.ShaguTweaksQuestTooltip = true
+    GameTooltip:SetOwner(owner, "ANCHOR_CURSOR")
+    GameTooltip:ClearLines()
+    GameTooltip:AddLine(title, 1, .82, 0)
+
+    if canCheckQuestStatus and QuestLog.IsOnQuest(questID) then
+      GameTooltip:AddLine("You are on this quest.", .2, 1, .2)
+    end
+
+    local info
+    if details.level and details.level > 0 then
+      info = (_G.LEVEL or "Level") .. " " .. details.level
+    end
+    if details.questType and details.questType ~= "" then
+      info = info and (info .. " - " .. details.questType) or details.questType
+    end
+    if info then
+      GameTooltip:AddLine(info, .8, .8, .8)
+    end
+
+    if details.objectives and details.objectives ~= "" then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine(details.objectives, 1, 1, 1, true)
+    end
+
+    GameTooltip:Show()
+    return true
+  end
+
+  if canLoadQuest and not self.questTooltipLoader then
+    self.questTooltipLoader = CreateFrame("Frame")
+  end
+  local questTooltipLoader = canLoadQuest and self.questTooltipLoader
+
+  local function ClearPendingQuest(owner)
+    if not questTooltipLoader then return end
+    if owner and questTooltipLoader.owner ~= owner then return end
+
+    questTooltipLoader:UnregisterEvent("QUEST_DATA_LOAD_RESULT")
+    questTooltipLoader.owner = nil
+    questTooltipLoader.questID = nil
+    questTooltipLoader.title = nil
+  end
+
+  if questTooltipLoader then
+    questTooltipLoader:SetScript("OnEvent", function()
+      if event ~= "QUEST_DATA_LOAD_RESULT" or tonumber(arg1) ~= this.questID then
+        return
+      end
+
+      local owner = this.owner
+      local questID = this.questID
+      local title = this.title
+      ClearPendingQuest()
+
+      if arg2 and owner and owner.ShaguTweaksQuestTooltip then
+        ShowQuestTooltip(owner, questID, title)
+      end
+    end)
   end
 
   -- --------------------------------------------------------
@@ -213,23 +359,30 @@ module.enable = function(self)
       _G["ChatFrame"..i].AddMessage = function(frame, text, a1, a2, a3, a4, a5)
         if not text then return end
 
-        -- Remove prat/chatter CLINKs
-        text = gsub(text, "{CLINK:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:item:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:enchant:(%x+):([%d-]-):([^}]-)}", "|c%1|Henchant:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:spell:(%x+):([%d-]-):([^}]-)}", "|c%1|Hspell:%2|h[%3]|h|r")
-        text = gsub(text, "{CLINK:quest:(%x+):([%d-]-):([%d-]-):([^}]-)}", "|c%1|Hquest:%2:%3|h[%4]|h|r")
-
-        -- Reduce channel number (e.g. [1. General] -> [1])
-        local channel = string.gsub(text, ".*%[(.-)%]%s+(.*|Hplayer).+", "%1")
-        if string.find(channel, "%d+%. ") then
-          channel = string.gsub(channel, "(%d+)%..*", "%1")
-          text = string.gsub(text, "%[%d+%..-%]%s+(.*|Hplayer)", "[" .. channel .. "] %1")
+        -- Remove prat/chatter CLINKs only when the marker is actually present.
+        if string.find(text, "{CLINK:", 1, true) then
+          text = gsub(text, "{CLINK:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:item:(%x+):([%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-:[%d-]-):([^}]-)}", "|c%1|Hitem:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:enchant:(%x+):([%d-]-):([^}]-)}", "|c%1|Henchant:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:spell:(%x+):([%d-]-):([^}]-)}", "|c%1|Hspell:%2|h[%3]|h|r")
+          text = gsub(text, "{CLINK:quest:(%x+):([%d-]-):([%d-]-):([^}]-)}", "|c%1|Hquest:%2:%3|h[%4]|h|r")
         end
 
-        -- URL detection
-        text = HandleLink(text)
+        -- Reduce channel number (e.g. [1. General] -> [1]). This transform
+        -- can only match lines that already contain a player hyperlink.
+        if string.find(text, "|Hplayer", 1, true) then
+          local channel = string.gsub(text, ".*%[(.-)%]%s+(.*|Hplayer).+", "%1")
+          if string.find(channel, "%d+%. ") then
+            channel = string.gsub(channel, "(%d+)%..*", "%1")
+            text = string.gsub(text, "%[%d+%..-%]%s+(.*|Hplayer)", "[" .. channel .. "] %1")
+          end
+        end
+
+        -- Skip all expensive URL patterns unless a real candidate is present.
+        if MayContainURL(text) then
+          text = HandleLink(text)
+        end
 
         SaveChatHistory(frame:GetID(), text, a1, a2, a3)
         frame:ShaguTweaksBaseAddMessage(text, a1, a2, a3, a4, a5)
@@ -240,31 +393,64 @@ module.enable = function(self)
       local baseHyperlinkLeave = chatFrame:GetScript("OnHyperlinkLeave")
       local baseHyperlinkClick = chatFrame:GetScript("OnHyperlinkClick")
 
-      -- Add the item-link preview without discarding Turtle or addon handlers.
+      -- Add item and quest previews without discarding Turtle or addon handlers.
       chatFrame:SetScript("OnHyperlinkEnter", function()
         local _, _, linktype = string.find(arg1, "^(.-):(.+)$")
         if linktype == "item" then
+          ClearPendingQuest(this)
           this.ShaguTweaksItemTooltip = true
           GameTooltip:SetOwner(this, "ANCHOR_CURSOR")
           GameTooltip:SetHyperlink(arg1)
           GameTooltip:Show()
+        elseif linktype == "quest" and hasQuestDetails then
+          local _, _, questID = string.find(arg1, "^quest:(%d+)")
+          questID = tonumber(questID)
+
+          if questID then
+            local title = CleanLinkText(arg2)
+            ClearPendingQuest(this)
+
+            if ShowQuestTooltip(this, questID, title) then
+              return
+            end
+
+            if questTooltipLoader then
+              this.ShaguTweaksQuestTooltip = true
+              GameTooltip:SetOwner(this, "ANCHOR_CURSOR")
+              GameTooltip:ClearLines()
+              GameTooltip:AddLine(title or ("Quest " .. questID), 1, .82, 0)
+              GameTooltip:Show()
+
+              questTooltipLoader.owner = this
+              questTooltipLoader.questID = questID
+              questTooltipLoader.title = title
+              questTooltipLoader:RegisterEvent("QUEST_DATA_LOAD_RESULT")
+              QuestLog.RequestLoadQuestByID(questID)
+              return
+            end
+          end
+
+          if baseHyperlinkEnter then
+            baseHyperlinkEnter()
+          end
         elseif baseHyperlinkEnter then
           baseHyperlinkEnter()
         end
       end)
 
       chatFrame:SetScript("OnHyperlinkLeave", function()
-        if this.ShaguTweaksItemTooltip then
+        if this.ShaguTweaksItemTooltip or this.ShaguTweaksQuestTooltip then
           this.ShaguTweaksItemTooltip = nil
+          this.ShaguTweaksQuestTooltip = nil
+          ClearPendingQuest(this)
           GameTooltip:Hide()
         elseif baseHyperlinkLeave then
           baseHyperlinkLeave()
         end
       end)
 
-      -- Keep Chat Tweaks-specific actions local to the chat frame. All other
-      -- hyperlinks, including Turtle quest links, stay owned by the native
-      -- handler so their full tooltip data and difficulty colors are preserved.
+      -- Keep Chat Tweaks-specific actions local to the chat frame. Other
+      -- hyperlink types stay owned by the native Turtle/addon handler.
       chatFrame:SetScript("OnHyperlinkClick", function()
         local _, _, playerLink = string.find(arg1, "(player:.+)")
         if playerLink then
